@@ -1,10 +1,17 @@
+import logging
+import time
 from collections.abc import Callable
+from contextlib import closing
 
+from assistant.audio import frames
 from assistant.core.dispatcher import Dispatcher
-from assistant.interfaces import IntentEngine
+from assistant.interfaces import STT, IntentEngine
 from assistant.tools import calculator, clock, fun
 from assistant.tools.timer import TimerManager
 from assistant.tools.volume import VolumeControl, get_backend
+from assistant.vad import SileroVAD, record_until_silence
+
+log = logging.getLogger(__name__)
 
 
 def build_dispatcher(notify: Callable[[str], None]) -> Dispatcher:
@@ -28,3 +35,16 @@ def handle(text: str, engine: IntentEngine, dispatcher: Dispatcher) -> str:
     if intent is None:
         return "Sorry, I didn't catch that."
     return dispatcher.run(intent).message
+
+
+def listen_once(vad: SileroVAD, stt: STT) -> str:
+    """Capture one utterance from the mic and return its text ('' if nobody spoke)."""
+    with closing(frames()) as source: # guarantees the mic is released
+        clip = record_until_silence(vad, source)
+    if clip is None:
+        return ""
+    start = time.perf_counter()
+    text = stt.transcribe(clip)
+    log.info("transcribed %.1f seconds of audio in %.2f seconds: %r",
+        len(clip) / 16_000, time.perf_counter() - start, text)
+    return text
