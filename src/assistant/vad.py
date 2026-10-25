@@ -1,12 +1,15 @@
+from collections import deque
+from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
 
-from assistant.audio import SAMPLE_RATE
+from assistant.audio import FRAME_SAMPLES, SAMPLE_RATE
 
 WINDOW = 512 # samples per model call at 16kHz (32ms)
 CONTEXT = 64 # samples carried over from the previous window
+FRAME_SECONDS = FRAME_SAMPLES / SAMPLE_RATE # 0.08 seconds
 
 
 class SileroVAD:
@@ -53,3 +56,41 @@ class SileroVAD:
 
     def is_speech(self, chunk: np.ndarray) -> bool:
         return self.get_speech_probability(chunk) >= self.threshold
+
+def record_until_silence(
+    vad: SileroVAD,
+    source: Iterable[np.ndarray],
+    wait_seconds: float = 5.0, # give up if nobody speaks
+    silence_seconds: float = 0.8, # quiet this long = utterance finished
+    max_seconds: float = 15.0, # hard cap on one command
+    preroll_frames: int = 4, # 4 x 80ms of audio kept from befor speech
+) -> np.ndarray | None:
+    """Capture one utterance. Return float32 mono audio, or None if nobody spoke."""
+    vad.reset()
+    preroll: deque[np.ndarray] = deque(maxlen=preroll_frames)
+    collected: list[np.ndarray] = []
+    speaking = False
+    waited = 0
+    silent = 0
+
+    for frame in source:
+        is_speech = vad.is_speech(frame)
+
+        if not speaking:
+            if is_speech:
+                speaking = True
+                collected = [*preroll, frame] # include the lead-in
+            else:
+                preroll.append(frame)
+                waited += 1
+                if waited * FRAME_SECONDS >= wait_seconds:
+                    return None
+            continue
+
+        collected.append(frame)
+        silent = 0 if is_speech else silent + 1
+        if (silent * FRAME_SECONDS >= silence_seconds
+            or len(collected) * FRAME_SECONDS >= max_seconds):
+            break
+
+    return np.concatenate(collected) if collected else None
