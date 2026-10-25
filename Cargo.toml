@@ -1,0 +1,14 @@
+[package]
+name = "pural"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.18.2"
+serde = { version = "1.0.229", features = ["derive"] }
+regex = "1.13.1"
+once_cell = "1.21.4"
+chrono = { version="0.4.45", features = ["clock"] }
+rand = "0.10.3"
+meval = "0.2.0"
+which = "8.0.6"

@@ -1,0 +1,11 @@
+[project]
+name = "pural"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "sounddevice",
+    "numpy",
+    "piper-tts>=1.8.0",
+]
