@@ -8,4 +8,5 @@ dependencies = [
     "sounddevice",
     "numpy",
     "piper-tts>=1.8.0",
+    "onnxruntime>=1.31.0",
 ]
