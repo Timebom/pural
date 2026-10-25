@@ -9,4 +9,5 @@ dependencies = [
     "numpy",
     "piper-tts>=1.8.0",
     "onnxruntime>=1.31.0",
+    "faster-whisper>=1.2.1",
 ]
