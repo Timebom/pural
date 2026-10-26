@@ -2,8 +2,9 @@ import argparse
 import logging
 
 from assistant.audio import SAMPLE_RATE, chime, play
+from assistant.core.conversation import Conversation
 from assistant.core.rules import build_default_engine
-from assistant.runtime import build_dispatcher, handle
+from assistant.runtime import build_dispatcher
 from assistant.speaker import Speaker
 from assistant.tts import PiperTTS
 
@@ -33,8 +34,10 @@ def main() -> None:
 
     engine = build_default_engine()
     dispatcher = build_dispatcher(notify)
+    conversation = Conversation(engine, dispatcher)
+    voice_mode = args.voice or args.wake
 
-    if args.voice or args.wake: # heavy imports only when needed
+    if voice_mode: # heavy imports only when needed
         from assistant.runtime import listen_once, wake_turn
         from assistant.stt import FasterWhisperSTT
         from assistant.vad import SileroVAD
@@ -49,32 +52,53 @@ def main() -> None:
     else:
         print("Type a command (empty line to quit).")
 
+    def get_command() -> str | None:
+        """Next command. '' = heard nothing (keep going), None = quit."""
+        if args.wake:
+            return wake_turn(detector, vad, stt,
+                on_wake=lambda: play(chime(), SAMPLE_RATE))
+        if args.voice:
+            input("[Enter to talk]")
+            print("listening...")
+            return listen_once(vad, stt)
+        return input("you> ").strip() or None
+
+    def get_answer() -> str:
+        """Answer to a question we just asked: no wake word, no Enter."""
+        if voice_mode:
+            print("listening...")
+            return listen_once(vad, stt)
+        return input("you> ").strip()
+
     while True:
         try:
-            if args.wake:
-                text = wake_turn(detector, vad, stt,
-                    on_wake=lambda: play(chime(), SAMPLE_RATE))
-                if not text:
-                    print("(heard nothing)")
-                    continue
+            text = get_command()
+            if text is None:
+                break
+            if not text:
+                print("(heard nothing)")
+                continue
+            if voice_mode:
                 print("you>", text)
-            elif args.voice:
-                input("[Enter to talk] ")
-                print("listening...")
-                text = listen_once(vad, stt)
-                if not text:
-                    print("(heard nothing)")
-                    continue
-                print("you>", text)
-            else:
-                text = input("you> ").strip()
-                if not text:
+            reply = conversation.respond(text)
+            while True:
+                print("assistant>", reply.text)
+                speaker.say(reply.text)
+                if not reply.awaiting_answer:
                     break
+                answer = get_answer()
+                if not answer:
+                    conversation.cancel()
+                    print("(heard nothing)")
+                    break
+                if voice_mode:
+                    print("you>", answer)
+                reply = conversation.respond(answer)
         except (EOFError, KeyboardInterrupt):
             break
-        reply = handle(text, engine, dispatcher)
-        print("assistant>", reply)
-        speaker.say(reply)
+        reply = conversation.respond(text)
+        print("assistant>", reply.text)
+        speaker.say(reply.text)
 
 
 if __name__ == "__main__":

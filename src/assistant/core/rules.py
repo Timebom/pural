@@ -18,6 +18,7 @@ def build_default_engine() -> RuleEngine:
     e.add("set_timer", r"\b(?:set|start)\s+(?:a|an)\s+timer\b")
 
     e.add("set_volume", r"\bvolume\s+(?:to|at)\s+(?P<level>\d{1,3})\b")
+    e.add("set_volume", r"\b(?:set|change) (?:the )?volume\b")
     e.add("volume_up",
             r"\bvolume up\b|\bturn (?:it |the volume )?up\b|\b(?:increase|raise) (?:the )?volume\b|\blouder\b")
     e.add("volume_down",

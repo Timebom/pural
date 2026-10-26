@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from typing import Protocol
 
-from assistant.interfaces import ToolResult
+from assistant.interfaces import FollowUp, ToolResult
 
 STEP = 10
 
@@ -82,7 +82,8 @@ class VolumeControl:
         try:
             target = int(slots.get("level", ""))
         except ValueError:
-            return ToolResult(False, "What volume level?")
+            return ToolResult(False, "What volume level?",
+                follow_up=FollowUp("set_volume", "level"))
         return self._change(lambda b: target)
 
     def volume_up(self, slots: dict[str, str]) -> ToolResult:

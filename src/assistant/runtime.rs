@@ -69,7 +69,7 @@ pub fn listen_once(vad: &mut SileroVAD, stt: &impl STT) -> String {
     // Stream is dropped at end of scope → mic is released
     let clip = record_until_silence(
         vad,
-        std::iter::from_fn(|| stream.next()),
+        std::iter::from_fn(|| stream.iter().next()),
         5.0,  // wait_seconds
         0.8,  // silence_seconds
         15.0, // max_seconds

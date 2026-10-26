@@ -2,7 +2,7 @@ import threading
 from collections.abc import Callable
 
 from assistant.core.parsing import parse_duration
-from assistant.interfaces import ToolResult
+from assistant.interfaces import FollowUp, ToolResult
 
 MAX_SECONDS = 24 * 3600
 
@@ -28,10 +28,12 @@ class TimerManager:
     def set_timer(self, slots: dict[str,str]) -> ToolResult:
         raw = slots.get("duration")
         if raw is None:
-            return ToolResult(False, "For how long?")
+            return ToolResult(False, "For how long?",
+                follow_up=FollowUp("set_timer", "duration"))
         seconds = parse_duration(raw)
         if seconds is None:
-            return ToolResult(False, "Sorry, I didn't catch how long.")
+            return ToolResult(False, "Sorry, I didn't catch how long. For how long?",
+                follow_up=FollowUp("set_timer", "duration"))
         if seconds > MAX_SECONDS:
             return ToolResult(False, "That's longer that I can time. The limit is 24 hours.")
 

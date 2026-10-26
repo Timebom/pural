@@ -6,7 +6,7 @@ from itertools import islice
 
 from assistant.audio import frames
 from assistant.core.dispatcher import Dispatcher
-from assistant.interfaces import STT, IntentEngine
+from assistant.interfaces import STT
 from assistant.tools import calculator, clock, fun
 from assistant.tools.timer import TimerManager
 from assistant.tools.volume import VolumeControl, get_backend
@@ -33,12 +33,12 @@ def build_dispatcher(notify: Callable[[str], None]) -> Dispatcher:
     return d
 
 
-def handle(text: str, engine: IntentEngine, dispatcher: Dispatcher) -> str:
-    """One full turn: text in, speakable reply out."""
-    intent = engine.parse(text)
-    if intent is None:
-        return "Sorry, I didn't catch that."
-    return dispatcher.run(intent).message
+# def handle(text: str, engine: IntentEngine, dispatcher: Dispatcher) -> str:
+#     """One full turn: text in, speakable reply out."""
+#     intent = engine.parse(text)
+#     if intent is None:
+#         return "Sorry, I didn't catch that."
+#     return dispatcher.run(intent).message
 
 
 def _transcribe(clip, stt: STT) -> str:

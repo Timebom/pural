@@ -1,40 +1,69 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, StreamConfig};
-use std::sync::mpsc::{self, Receiver};
-use std::sync::{Arc, Mutex};
+use cpal::{Device, SampleFormat, StreamConfig};
+use crossbeam_channel::{bounded, Receiver};
+use std::error::Error;
 use std::thread;
 use std::time::Duration;
 
 pub const SAMPLE_RATE: u32 = 16_000;
 pub const CHANNELS: u16 = 1;
-pub const FRAME_SAMPLES: u32 = 1280; // 80 ms at 16 kHz
+pub const FRAME_SAMPLES: usize = 1280;
 
+type AudioResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+/// Information about an audio device.
 #[derive(Debug, Clone)]
 pub struct AudioDeviceInfo {
     pub index: usize,
-    pub id: String,
     pub name: String,
     pub inputs: u16,
     pub outputs: u16,
-    pub default_rate: Option<u32>,
+    pub default_rate: f64,
     pub is_default_input: bool,
     pub is_default_output: bool,
 }
 
-/// Return every audio device the system can see.
-pub fn list_devices() -> Result<Vec<AudioDeviceInfo>, Box<dyn std::error::Error>> {
+fn device_at(index: Option<usize>) -> AudioResult<Device> {
     let host = cpal::default_host();
 
-    let default_input = host.default_input_device();
-    let default_output = host.default_output_device();
+    match index {
+        Some(target) => host
+            .devices()?
+            .nth(target)
+            .ok_or_else(|| format!("Audio device index {target} not found").into()),
+        None => Err("Use the default input/output device explicitly".into()),
+    }
+}
 
-    let default_input_name = default_input
-        .as_ref()
+fn input_device(index: Option<usize>) -> AudioResult<Device> {
+    match index {
+        Some(i) => device_at(Some(i)),
+        None => cpal::default_host()
+            .default_input_device()
+            .ok_or_else(|| "No default input device available".into()),
+    }
+}
+
+fn output_device(index: Option<usize>) -> AudioResult<Device> {
+    match index {
+        Some(i) => device_at(Some(i)),
+        None => cpal::default_host()
+            .default_output_device()
+            .ok_or_else(|| "No default output device available".into()),
+    }
+}
+
+/// List all audio devices visible to CPAL.
+pub fn list_devices() -> AudioResult<Vec<AudioDeviceInfo>> {
+    let host = cpal::default_host();
+
+    let default_input = host
+        .default_input_device()
         .and_then(|d| d.description().ok())
         .map(|d| d.to_string());
 
-    let default_output_name = default_output
-        .as_ref()
+    let default_output = host
+        .default_output_device()
         .and_then(|d| d.description().ok())
         .map(|d| d.to_string());
 
@@ -46,199 +75,402 @@ pub fn list_devices() -> Result<Vec<AudioDeviceInfo>, Box<dyn std::error::Error>
             .map(|d| d.to_string())
             .unwrap_or_else(|_| "Unknown".into());
 
-        let id = device
-            .id()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|_| format!("unknown-{}", index));
-
-        let inputs = device
-            .supported_input_configs()
-            .map(|configs| configs.map(|c| c.channels()).max().unwrap_or(0))
-            .unwrap_or(0);
+        let (inputs, default_rate) = device
+            .default_input_config()
+            .map(|c| (c.channels(), c.sample_rate() as f64))
+            .unwrap_or((0, 0.0));
 
         let outputs = device
-            .supported_output_configs()
-            .map(|configs| configs.map(|c| c.channels()).max().unwrap_or(0))
+            .default_output_config()
+            .map(|c| c.channels())
             .unwrap_or(0);
-
-        let default_rate = device
-            .default_input_config()
-            .or_else(|_| device.default_output_config())
-            .ok()
-            .map(|c| c.sample_rate());
-
-        let is_default_input = default_input_name.as_ref() == Some(&name);
-        let is_default_output = default_output_name.as_ref() == Some(&name);
 
         devices.push(AudioDeviceInfo {
             index,
-            id,
+            is_default_input: default_input.as_ref() == Some(&name),
+            is_default_output: default_output.as_ref() == Some(&name),
             name,
             inputs,
             outputs,
             default_rate,
-            is_default_input,
-            is_default_output,
         });
     }
 
     Ok(devices)
 }
 
-/// Play float32 mono audio and block until it finishes.
-pub fn play(samples: &[f32], rate: u32) -> Result<(), Box<dyn std::error::Error>> {
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .ok_or("no default output device")?;
+/// Play mono f32 audio and block until it finishes.
+///
+/// Uses the device's default output sample rate and resamples
+/// the supplied audio if necessary.
+pub fn play(samples: &[f32], rate: u32) -> AudioResult<()> {
+    play_on_device(samples, rate, None)
+}
 
-    let config = StreamConfig {
-        channels: CHANNELS,
-        sample_rate: rate,
-        buffer_size: cpal::BufferSize::Default,
-    };
+pub fn play_on_device(
+    samples: &[f32],
+    rate: u32,
+    device_index: Option<usize>,
+) -> AudioResult<()> {
+    if rate == 0 {
+        return Err("Sample rate must be greater than zero".into());
+    }
 
-    let samples = samples.to_vec();
-    let total = samples.len();
-    let pos = Arc::new(Mutex::new(0usize));
-    let pos2 = Arc::clone(&pos);
+    let device = output_device(device_index)?;
+    let supported = device.default_output_config()?;
+    let output_rate = supported.sample_rate();
+    let channels = supported.channels() as usize;
+    let sample_format = supported.sample_format();
 
-    let stream = device.build_output_stream(
-        config,
-        move |data: &mut [f32], _| {
-            let mut pos = pos2.lock().unwrap();
-            for sample in data.iter_mut() {
-                if *pos < total {
-                    *sample = samples[*pos];
-                    *pos += 1;
-                } else {
-                    *sample = 0.0;
+    // Linear interpolation if the device uses a different sample rate.
+    let output_samples = resample(samples, rate, output_rate);
+
+    let config: StreamConfig = supported.into();
+    let mut position = 0usize;
+
+    let err_fn = |err| eprintln!("Audio output error: {err}");
+
+    macro_rules! play_typed {
+        ($ty:ty, $convert:expr) => {{
+            let stream = device.build_output_stream(
+                config,
+                move |data: &mut [$ty], _| {
+                    for frame in data.chunks_mut(channels) {
+                        let sample = output_samples
+                            .get(position)
+                            .copied()
+                            .unwrap_or(0.0);
+
+                        if position < output_samples.len() {
+                            position += 1;
+                        }
+
+                        let converted: $ty = $convert(sample);
+
+                        for channel in frame {
+                            *channel = converted;
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )?;
+
+            stream.play()?;
+
+            let duration = Duration::from_secs_f64(
+                samples.len() as f64 / rate as f64
+            );
+
+            thread::sleep(
+                duration + Duration::from_millis(100)
+            );
+
+            drop(stream);
+            Ok::<(), Box<dyn Error + Send + Sync>>(())
+        }};
+    }
+
+    match sample_format {
+        SampleFormat::F32 => play_typed!(f32, |s: f32| s),
+        SampleFormat::I16 => play_typed!(
+            i16,
+            |s: f32| (s.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
+        ),
+        SampleFormat::U16 => play_typed!(
+            u16,
+            |s: f32| ((s.clamp(-1.0, 1.0) + 1.0) * 32767.5) as u16
+        ),
+        format => Err(format!("Unsupported output sample format: {format:?}").into()),
+    }
+}
+
+/// Simple linear resampling.
+fn resample(samples: &[f32], input_rate: u32, output_rate: u32) -> Vec<f32> {
+    if samples.is_empty() {
+        return Vec::new();
+    }
+
+    if input_rate == output_rate {
+        return samples.to_vec();
+    }
+
+    let output_len =
+        (samples.len() as u64 * output_rate as u64 / input_rate as u64) as usize;
+
+    (0..output_len)
+        .map(|i| {
+            let position = i as f64 * input_rate as f64 / output_rate as f64;
+            let left = (position.floor() as usize).min(samples.len() - 1);
+            let right = (left + 1).min(samples.len() - 1);
+            let fraction = (position - left as f64) as f32;
+
+            samples[left] * (1.0 - fraction)
+                + samples[right] * fraction
+        })
+        .collect()
+}
+
+/// Record a fixed duration of mono f32 audio.
+pub fn record(seconds: f64, device_index: Option<usize>) -> AudioResult<Vec<f32>> {
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Err("Duration must be a finite, non-negative number".into());
+    }
+
+    let device = input_device(device_index)?;
+    let supported = device.default_input_config()?;
+    let input_rate = supported.sample_rate();
+    let channels = supported.channels() as usize;
+    let sample_format = supported.sample_format();
+
+    let frames_needed = (seconds * SAMPLE_RATE as f64) as usize;
+    let input_frames_needed =
+        (seconds * input_rate as f64).ceil() as usize;
+
+    let (tx, rx) = bounded::<Vec<f32>>(32);
+    let err_fn = |err| eprintln!("Audio input error: {err}");
+
+    macro_rules! record_typed {
+        ($ty:ty, $convert:expr) => {{
+            let stream = device.build_input_stream(
+                StreamConfig {
+                    channels: channels as u16,
+                    sample_rate: input_rate,
+                    buffer_size: cpal::BufferSize::Default,
+                },
+                move |data: &[$ty], _| {
+                    let mono: Vec<f32> = data
+                        .chunks(channels)
+                        .map(|frame| $convert(frame[0]))
+                        .collect();
+
+                    let _ = tx.try_send(mono);
+                },
+                err_fn,
+                None,
+            )?;
+
+            stream.play()?;
+
+            let mut input = Vec::with_capacity(input_frames_needed);
+
+            while input.len() < input_frames_needed {
+                match rx.recv_timeout(Duration::from_secs(5)) {
+                    Ok(chunk) => input.extend(chunk),
+                    Err(e) => {
+                        return Err(
+                            format!("Recording failed or timed out: {e}").into()
+                        );
+                    }
                 }
             }
-        },
-        |err| eprintln!("output stream error: {}", err),
-        None,
-    )?;
 
-    stream.play()?;
+            drop(stream);
+            input.truncate(input_frames_needed);
 
-    // Wait until all samples have been written
-    let duration_ms = (total as f64 / rate as f64 * 1000.0) as u64 + 50;
-    thread::sleep(Duration::from_millis(duration_ms));
+            let mut output = resample(&input, input_rate, SAMPLE_RATE);
+            output.truncate(frames_needed);
 
-    Ok(())
-}
-
-/// Unified get_device function to get right device for a device_index
-pub fn get_device(device_index: Option<usize>) -> Result<Device, Box<dyn std::error::Error>> {
-    let host = cpal::default_host();
-
-    match device_index {
-        Some(idx) => host
-            .devices()?
-            .nth(idx)
-            .ok_or_else(|| "device index out of range".into()),
-        None => host
-            .default_input_device()
-            .ok_or_else(|| "no default input device".into()),
-    }
-}
-
-/// Record a fixed time. Returns float32 mono in range [-1, 1].
-pub fn record(seconds: f32, device_index: Option<usize>) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
-    let device = get_device(device_index)?;
-
-    let config = StreamConfig {
-        channels: CHANNELS,
-        sample_rate: SAMPLE_RATE,
-        buffer_size: cpal::BufferSize::Default,
-    };
-
-    let target_samples = (seconds * SAMPLE_RATE as f32) as usize;
-    let buffer = Arc::new(Mutex::new(Vec::with_capacity(target_samples)));
-    let buffer2 = Arc::clone(&buffer);
-    let done = Arc::new(Mutex::new(false));
-    let done2 = Arc::clone(&done);
-
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[f32], _| {
-            let mut buf = buffer2.lock().unwrap();
-            if buf.len() >= target_samples {
-                *done2.lock().unwrap() = true;
-                return;
+            if output.len() < frames_needed {
+                output.resize(frames_needed, 0.0);
             }
-            let remaining = target_samples - buf.len();
-            let take = data.len().min(remaining);
-            buf.extend_from_slice(&data[..take]);
-        },
-        |err| eprintln!("input stream error: {}", err),
-        None,
-    )?;
 
-    stream.play()?;
-
-    // Wait until we have enough samples
-    while !*done.lock().unwrap() {
-        thread::sleep(Duration::from_millis(10));
-        let len = buffer.lock().unwrap().len();
-        if len >= target_samples {
-            break;
-        }
+            Ok::<Vec<f32>, Box<dyn Error + Send + Sync>>(output)
+        }};
     }
 
-    let result = buffer.lock().unwrap().clone();
-    Ok(result)
+    match sample_format {
+        SampleFormat::F32 => record_typed!(f32, |s: f32| s),
+        SampleFormat::I16 => record_typed!(
+            i16,
+            |s: i16| s as f32 / 32768.0
+        ),
+        SampleFormat::U16 => record_typed!(
+            u16,
+            |s: u16| (s as f32 - 32768.0) / 32768.0
+        ),
+        format => Err(format!("Unsupported input sample format: {format:?}").into()),
+    }
 }
 
-/// Yields 80 ms mono float32 frames from the mic.
-/// Drop the returned `FrameStream` (or call `.stop()`) to end streaming.
-/// Custom iterator struct that owns the active CPAL stream and the MPSC receiver channel.
-pub struct FrameStream {
-    _stream: cpal::Stream,
+/// Start continuous microphone capture.
+///
+/// Returns a receiver of 1280-sample mono frames. Each frame is 80 ms
+/// at 16 kHz. If the bounded queue is full, incoming audio is dropped.
+pub fn frames(device_index: Option<usize>) -> AudioResult<Receiver<Vec<f32>>> {
+    let device = input_device(device_index)?;
+    let supported = device.default_input_config()?;
+    let input_rate = supported.sample_rate();
+    let channels = supported.channels() as usize;
+    let sample_format = supported.sample_format();
+
+    let (tx, rx) = bounded::<Vec<f32>>(100);
+
+    macro_rules! start_stream {
+        ($ty:ty, $convert:expr) => {{
+            let tx = tx.clone();
+            let mut pending: Vec<f32> = Vec::new();
+
+            device.build_input_stream(
+                &StreamConfig {
+                    channels: channels as u16,
+                    sample_rate: input_rate,
+                    buffer_size: cpal::BufferSize::Fixed(
+                        FRAME_SAMPLES as u32
+                    ),
+                },
+                move |data: &[$ty], _| {
+                    for frame in data.chunks(channels) {
+                        pending.push($convert(frame[0]));
+                    }
+
+                    while pending.len() >= FRAME_SAMPLES {
+                        let chunk: Vec<f32> =
+                            pending.drain(..FRAME_SAMPLES).collect();
+
+                        // Drop the chunk instead of blocking the callback.
+                        let _ = tx.try_send(chunk);
+                    }
+                },
+                |err| eprintln!("Audio input error: {err}"),
+                None,
+            )?
+        }};
+    }
+
+    // Keep the stream alive for as long as the receiver is used.
+    // The stream itself must outlive this function.
+    // Use AudioFrames below to manage this lifetime.
+    let _ = sample_format;
+
+    Err("Use AudioFrames::start() for continuous capture".into())
+}
+
+/// Continuous capture object that keeps the input stream alive.
+
+pub struct AudioFrames {
     receiver: Receiver<Vec<f32>>,
+    // Keep the stream alive until AudioFrames is dropped.
+    _stream: cpal::Stream,
 }
 
-impl Iterator for FrameStream {
+impl Iterator for AudioFrames {
     type Item = Vec<f32>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.receiver.recv().ok()
     }
 }
-/// Frames is currently broken wait for fix does not work on (macos)
-/// Yields mono float32 frames from the microphone (equivalent to Python's generator).
-pub fn frames(device_index: Option<usize>) -> Result<FrameStream, Box<dyn std::error::Error>> {
+
+pub fn frames(device_index: Option<usize>) -> AudioResult<AudioFrames> {
+    const FRAME_SAMPLES: usize = 1280;
+    const SAMPLE_RATE: u32 = 16_000;
+    const QUEUE_SIZE: usize = 100;
+
     let host = cpal::default_host();
+
     let device = match device_index {
-        Some(idx) => host.input_devices()?.nth(idx).ok_or("Device not found")?,
-        None => host.default_input_device().ok_or("No default input device found")?,
+        Some(index) => host
+            .devices()?
+            .nth(index)
+            .ok_or_else(|| format!("Input device {index} not found"))?,
+        None => host
+            .default_input_device()
+            .ok_or("No default microphone available")?,
     };
 
-    let config = cpal::StreamConfig {
-        channels: CHANNELS,
+    let supported = device.default_input_config()?;
+    let sample_format = supported.sample_format();
+    let input_rate = supported.sample_rate();
+    let channels = supported.channels() as usize;
+
+    if input_rate != SAMPLE_RATE {
+        return Err(format!(
+            "Microphone sample rate is {input_rate} Hz; expected {SAMPLE_RATE} Hz"
+        ).into());
+    }
+
+    let config = StreamConfig {
+        channels: channels as u16,
         sample_rate: SAMPLE_RATE,
         buffer_size: cpal::BufferSize::Fixed(FRAME_SAMPLES as u32),
     };
 
-    // Bounded channel with maxsize=100, dropping frames if full (just like queue.Full pass)
-    let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(100);
+    let (tx, rx) = bounded::<Vec<f32>>(QUEUE_SIZE);
 
-    let err_fn = |err| eprintln!("Audio status warning/error: {}", err);
+    macro_rules! build_stream {
+        ($sample_type:ty, $convert:expr) => {{
+            let tx = tx.clone();
+            let mut pending: Vec<f32> = Vec::with_capacity(FRAME_SAMPLES * 2);
 
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-            let _ = tx.try_send(data.to_vec());
-        },
-        err_fn,
-        None,
-    )?;
+            device.build_input_stream(
+                config,
+                move |data: &[$sample_type], _| {
+                    for sample_frame in data.chunks(channels) {
+                        if let Some(&sample) = sample_frame.first() {
+                            pending.push($convert(sample));
+                        }
+                    }
+
+                    while pending.len() >= FRAME_SAMPLES {
+                        let frame: Vec<f32> =
+                            pending.drain(..FRAME_SAMPLES).collect();
+
+                        // Never block the audio callback.
+                        // Drop frames if the consumer falls behind.
+                        let _ = tx.try_send(frame);
+                    }
+                },
+                |err| eprintln!("Microphone stream error: {err}"),
+                None,
+            )?
+        }};
+    }
+
+    let stream = match sample_format {
+        SampleFormat::F32 => build_stream!(f32, |s: f32| s),
+        SampleFormat::I16 => {
+            build_stream!(i16, |s: i16| s as f32 / 32768.0)
+        }
+        SampleFormat::U16 => {
+            build_stream!(u16, |s: u16| {
+                (s as f32 - 32768.0) / 32768.0
+            })
+        }
+        format => {
+            return Err(
+                format!("Unsupported microphone sample format: {format:?}").into()
+            );
+        }
+    };
 
     stream.play()?;
 
-    Ok(FrameStream {
-        _stream: stream,
+    Ok(AudioFrames {
         receiver: rx,
+        _stream: stream,
     })
+}
+
+/// Generate a short sine-wave beep with 10 ms fade-in/out.
+pub fn chime(freq: f64, seconds: f64) -> Vec<f32> {
+    let n = (SAMPLE_RATE as f64 * seconds.max(0.0)) as usize;
+
+    (0..n)
+        .map(|i| {
+            let t = i as f64 / SAMPLE_RATE as f64;
+
+            let tone = (2.0 * std::f64::consts::PI * freq * t).sin();
+
+            let fade = (t.min(seconds - t) / 0.01)
+                .clamp(0.0, 1.0);
+
+            (0.3 * tone * fade) as f32
+        })
+        .collect()
+}
+
+/// Generate a chime with the Python function's default arguments.
+pub fn default_chime() -> Vec<f32> {
+    chime(880.0, 0.12)
 }

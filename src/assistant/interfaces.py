@@ -13,11 +13,20 @@ class Intent:
 
 
 @dataclass(frozen=True)
+class FollowUp:
+    """'I need one more slot': the next utterance is the answer to this."""
+    intent: str # intent to re-run, e.g. "set_timer"
+    slot: str # slot the answer fills, e.g. "duration"
+    slots: dict[str, str] = field(default_factory=dict) # slots already known
+
+
+@dataclass(frozen=True)
 class ToolResult:
     """What a tool returns: structured for code, readable for TTS"""
     ok: bool
     message: str
     data: dict = field(default_factory=dict)
+    follow_up: FollowUp | None = None
 
 
 class STT(Protocol):
