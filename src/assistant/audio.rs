@@ -212,61 +212,65 @@ impl FrameStream {
 pub fn frames(device_index: Option<usize>) -> Result<FrameStream, Box<dyn std::error::Error>> {
     let device = get_device(device_index)?;
 
-    // Ask for the device’s preferred / highest supported rate instead of hard-coding 16 kHz
+    // Use the device's preferred config
     let supported = device.default_input_config()?;
     let device_rate = supported.sample_rate();
-    let channels = supported.channels();
+    let channels = supported.channels().max(1);
 
-    // Prefer mono if the device can do it, otherwise take whatever it gives and downmix later
     let config = StreamConfig {
-        channels: if channels >= 1 { 1 } else { channels },
+        channels,
         sample_rate: device_rate,
-        buffer_size: cpal::BufferSize::Default, // Fixed can also fail on some devices
+        buffer_size: cpal::BufferSize::Default,
     };
 
-    let (tx, rx): (SyncSender<Vec<f32>>, Receiver<Vec<f32>>) = mpsc::sync_channel(100);
+    let (tx, rx): (SyncSender<Vec<f32>>, Receiver<Vec<f32>>) = mpsc::sync_channel(64);
 
-    // Simple linear resampler state
-    let mut leftover = Vec::<f32>::new();
+    // Resampling state
+    let mut leftover: Vec<f32> = Vec::new();
     let ratio = device_rate as f64 / SAMPLE_RATE as f64;
+    let mut pos = 0.0f64;
 
     let stream = device.build_input_stream(
         config,
         move |data: &[f32], _| {
-            // data may be mono or stereo depending on the device
+            // Downmix to mono if needed
             let mono: Vec<f32> = if channels == 1 {
                 data.to_vec()
             } else {
-                // crude downmix
                 data.chunks(channels as usize)
-                    .map(|c| c.iter().sum::<f32>() / channels as f32)
+                    .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)
                     .collect()
             };
 
-            // Resample to 16 kHz (very simple linear interpolation)
             leftover.extend_from_slice(&mono);
-            let mut out = Vec::new();
-            let mut pos = 0.0f64;
 
+            // Simple linear resampler → 16 kHz
+            let mut out = Vec::new();
             while (pos as usize) + 1 < leftover.len() {
                 let i = pos as usize;
-                let frac = pos - i as f64;
-                let s = leftover[i] * (1.0 - frac as f32) + leftover[i + 1] * frac as f32;
-                out.push(s);
+                let frac = (pos - i as f64) as f32;
+                let sample = leftover[i] * (1.0 - frac) + leftover[i + 1] * frac;
+                out.push(sample);
                 pos += ratio;
             }
 
-            // keep the unused tail
-            let keep = leftover.len().saturating_sub(pos as usize);
-            leftover = leftover[leftover.len() - keep..].to_vec();
+            // Keep residual samples
+            let consumed = pos as usize;
+            if consumed > 0 {
+                leftover.drain(..consumed.min(leftover.len()));
+                pos -= consumed as f64;
+            }
 
-            // emit complete 80 ms frames
+            // Emit complete 80 ms frames (1280 samples @ 16 kHz)
             while out.len() >= FRAME_SAMPLES as usize {
-                let frame: Vec<f32> = out.drain(..FRAME_SAMPLES as usize).collect();
+                let frame = out.drain(..FRAME_SAMPLES as usize).collect::<Vec<_>>();
+                // Non-blocking send – drop frame if queue is full
                 let _ = tx.try_send(frame);
             }
         },
-        |err| eprintln!("input stream error: {}", err),
+        |err| {
+            eprintln!("input stream error: {err}");
+        },
         None,
     )?;
 
