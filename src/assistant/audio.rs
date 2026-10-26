@@ -208,60 +208,67 @@ impl FrameStream {
     }
 }
 
+struct ResamplerState {
+    leftover: Vec<f32>,
+    pos: f64,
+}
+
 /// Start continuous microphone capture. Yields frames of `FRAME_SAMPLES`.
 pub fn frames(device_index: Option<usize>) -> Result<FrameStream, Box<dyn std::error::Error>> {
     let device = get_device(device_index)?;
 
-    // Use the device's preferred config
     let supported = device.default_input_config()?;
     let device_rate = supported.sample_rate();
-    let channels = supported.channels().max(1);
+    let channels = supported.channels() as usize;
 
     let config = StreamConfig {
-        channels,
+        channels: channels as u16,
         sample_rate: device_rate,
         buffer_size: cpal::BufferSize::Default,
     };
 
     let (tx, rx): (SyncSender<Vec<f32>>, Receiver<Vec<f32>>) = mpsc::sync_channel(64);
 
-    // Resampling state
-    let mut leftover: Vec<f32> = Vec::new();
+    let state = Arc::new(Mutex::new(ResamplerState {
+        leftover: Vec::new(),
+        pos: 0.0,
+    }));
+
     let ratio = device_rate as f64 / SAMPLE_RATE as f64;
-    let mut pos = 0.0f64;
+    let state_clone = state.clone();
 
     let stream = device.build_input_stream(
         config,
         move |data: &[f32], _| {
-            // Downmix to mono if needed
+            // Downmix to mono if multi-channel
             let mono: Vec<f32> = if channels == 1 {
                 data.to_vec()
             } else {
-                data.chunks(channels as usize)
-                    .map(|frame| frame.iter().copied().sum::<f32>() / channels as f32)
+                data.chunks(channels)
+                    .map(|c| c.iter().sum::<f32>() / channels as f32)
                     .collect()
             };
 
-            leftover.extend_from_slice(&mono);
+            let mut st = state_clone.lock().unwrap();
+            st.leftover.extend_from_slice(&mono);
 
-            // Simple linear resampler → 16 kHz
             let mut out = Vec::new();
-            while (pos as usize) + 1 < leftover.len() {
-                let i = pos as usize;
-                let frac = (pos - i as f64) as f32;
-                let sample = leftover[i] * (1.0 - frac) + leftover[i + 1] * frac;
-                out.push(sample);
-                pos += ratio;
+            while (st.pos as usize) + 1 < st.leftover.len() {
+                let i = st.pos as usize;
+                let frac = st.pos - i as f64;
+                let s = st.leftover[i] * (1.0 - frac as f32) + st.leftover[i + 1] * frac as f32;
+                out.push(s);
+                st.pos += ratio;
             }
 
-            // Keep residual samples
-            let consumed = pos as usize;
+            // Discard consumed samples and shift fractional phase position back
+            let consumed = st.pos as usize;
             if consumed > 0 {
-                leftover.drain(..consumed.min(leftover.len()));
-                pos -= consumed as f64;
+                st.leftover.drain(..consumed);
+                st.pos -= consumed as f64;
             }
 
-            // Emit complete 80 ms frames (1280 samples @ 16 kHz)
+            // Emit complete 80 ms frames
             while out.len() >= FRAME_SAMPLES as usize {
                 let frame = out.drain(..FRAME_SAMPLES as usize).collect::<Vec<_>>();
                 // Non-blocking send – drop frame if queue is full
