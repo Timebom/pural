@@ -34,7 +34,7 @@ def main() -> None:
     engine = build_default_engine()
     dispatcher = build_dispatcher(notify)
 
-    if args.voice: # heavy imports only when needed
+    if args.voice or args.wake: # heavy imports only when needed
         from assistant.runtime import listen_once, wake_turn
         from assistant.stt import FasterWhisperSTT
         from assistant.vad import SileroVAD
