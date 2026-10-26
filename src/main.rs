@@ -13,8 +13,8 @@ use crate::assistant::tts::PiperTTS;
 use crate::assistant::vad::SileroVAD;
 use crate::assistant::stt::FasterWhisperSTT; // add when you have the STT module
 
-const TTS_MODEL: &str = "../models/tts/en_GB-alba-medium.onnx";
-const VAD_MODEL: &str = "../models/vad/silero_vad.onnx";
+const TTS_MODEL: &str = "models/tts/en_GB-alba-medium.onnx";
+const VAD_MODEL: &str = "models/vad/silero_vad.onnx";
 
 #[derive(Parser, Debug)]
 #[command(name = "assistant", about = "Pure Python → Rust voice assistant")]
@@ -71,7 +71,7 @@ fn main() {
         }
 
         stt = Some(
-            FasterWhisperSTT::new("base.en", PathBuf::from("../models/whisper"))
+            FasterWhisperSTT::new("base.en", PathBuf::from("models/whisper"))
                 .expect("failed to load STT"),
         );
 
