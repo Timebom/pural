@@ -57,6 +57,9 @@ def frames(device: int | None = None) -> Iterator[np.ndarray]:
             while True:
                 yield q.get()
 
-# if __name__ == "__main__":
-#     for d in list_devices():
-#         print(d)
+def chime(freq: float = 880.0, seconds: float = 0.12) -> np.ndarray:
+    """A short, soft beep as float32 mono at SAMPLE_RATE."""
+    t = np.arange(int(SAMPLE_RATE * seconds)) / SAMPLE_RATE
+    tone = np.sin(2 * np.pi * freq * t)
+    fade = np.minimum(1.0, np.minimum(t, seconds - t) / 0.01)   # 10 ms in/out
+    return (0.3 * tone * fade).astype(np.float32)
