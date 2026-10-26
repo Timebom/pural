@@ -206,7 +206,7 @@ impl Iterator for FrameStream {
         self.receiver.recv().ok()
     }
 }
-
+/// Frames is currently broken wait for fix does not work on (macos)
 /// Yields mono float32 frames from the microphone (equivalent to Python's generator).
 pub fn frames(device_index: Option<usize>) -> Result<FrameStream, Box<dyn std::error::Error>> {
     let host = cpal::default_host();
