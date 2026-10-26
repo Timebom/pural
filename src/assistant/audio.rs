@@ -1,6 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, StreamConfig};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -193,91 +193,45 @@ pub fn record(seconds: f32, device_index: Option<usize>) -> Result<Vec<f32>, Box
 
 /// Yields 80 ms mono float32 frames from the mic.
 /// Drop the returned `FrameStream` (or call `.stop()`) to end streaming.
+/// Custom iterator struct that owns the active CPAL stream and the MPSC receiver channel.
 pub struct FrameStream {
-    _stream: cpal::Stream, // keep alive
-    rx: Receiver<Vec<f32>>,
+    _stream: cpal::Stream,
+    receiver: Receiver<Vec<f32>>,
 }
 
-impl FrameStream {
-    pub fn next_frame(&self) -> Option<Vec<f32>> {
-        self.rx.recv().ok()
-    }
+impl Iterator for FrameStream {
+    type Item = Vec<f32>;
 
-    pub fn try_next_frame(&self) -> Option<Vec<f32>> {
-        self.rx.try_recv().ok()
+    fn next(&mut self) -> Option<Self::Item> {
+        self.receiver.recv().ok()
     }
 }
 
-struct ResamplerState {
-    leftover: Vec<f32>,
-    pos: f64,
-}
-
-/// Start continuous microphone capture. Yields frames of `FRAME_SAMPLES`.
+/// Yields mono float32 frames from the microphone (equivalent to Python's generator).
 pub fn frames(device_index: Option<usize>) -> Result<FrameStream, Box<dyn std::error::Error>> {
-    let device = get_device(device_index)?;
-
-    let supported = device.default_input_config()?;
-    let device_rate = supported.sample_rate();
-    let channels = supported.channels() as usize;
-
-    let config = StreamConfig {
-        channels: channels as u16,
-        sample_rate: device_rate,
-        buffer_size: cpal::BufferSize::Default,
+    let host = cpal::default_host();
+    let device = match device_index {
+        Some(idx) => host.input_devices()?.nth(idx).ok_or("Device not found")?,
+        None => host.default_input_device().ok_or("No default input device found")?,
     };
 
-    let (tx, rx): (SyncSender<Vec<f32>>, Receiver<Vec<f32>>) = mpsc::sync_channel(64);
+    let config = cpal::StreamConfig {
+        channels: CHANNELS,
+        sample_rate: SAMPLE_RATE,
+        buffer_size: cpal::BufferSize::Fixed(FRAME_SAMPLES as u32),
+    };
 
-    let state = Arc::new(Mutex::new(ResamplerState {
-        leftover: Vec::new(),
-        pos: 0.0,
-    }));
+    // Bounded channel with maxsize=100, dropping frames if full (just like queue.Full pass)
+    let (tx, rx) = mpsc::sync_channel::<Vec<f32>>(100);
 
-    let ratio = device_rate as f64 / SAMPLE_RATE as f64;
-    let state_clone = state.clone();
+    let err_fn = |err| eprintln!("Audio status warning/error: {}", err);
 
     let stream = device.build_input_stream(
         config,
-        move |data: &[f32], _| {
-            // Downmix to mono if multi-channel
-            let mono: Vec<f32> = if channels == 1 {
-                data.to_vec()
-            } else {
-                data.chunks(channels)
-                    .map(|c| c.iter().sum::<f32>() / channels as f32)
-                    .collect()
-            };
-
-            let mut st = state_clone.lock().unwrap();
-            st.leftover.extend_from_slice(&mono);
-
-            let mut out = Vec::new();
-            while (st.pos as usize) + 1 < st.leftover.len() {
-                let i = st.pos as usize;
-                let frac = st.pos - i as f64;
-                let s = st.leftover[i] * (1.0 - frac as f32) + st.leftover[i + 1] * frac as f32;
-                out.push(s);
-                st.pos += ratio;
-            }
-
-            // Discard consumed samples and shift fractional phase position back
-            let consumed = st.pos as usize;
-            if consumed > 0 {
-                st.leftover.drain(..consumed);
-                st.pos -= consumed as f64;
-            }
-
-            // Emit complete 80 ms frames
-            while out.len() >= FRAME_SAMPLES as usize {
-                let frame = out.drain(..FRAME_SAMPLES as usize).collect::<Vec<_>>();
-                // Non-blocking send – drop frame if queue is full
-                let _ = tx.try_send(frame);
-            }
+        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+            let _ = tx.try_send(data.to_vec());
         },
-        |err| {
-            eprintln!("input stream error: {err}");
-        },
+        err_fn,
         None,
     )?;
 
@@ -285,6 +239,6 @@ pub fn frames(device_index: Option<usize>) -> Result<FrameStream, Box<dyn std::e
 
     Ok(FrameStream {
         _stream: stream,
-        rx,
+        receiver: rx,
     })
 }
