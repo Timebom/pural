@@ -12,3 +12,10 @@ chrono = { version="0.4.45", features = ["clock"] }
 rand = "0.10.3"
 meval = "0.2.0"
 which = "8.0.6"
+piper-rs = "0.2.0"
+ort = "2.0.0-rc.12"
+ndarray = "0.17.2"
+clap = { version = "4.6.7", features = ["derive"] }
+env_logger = "0.11.11"
+log = "0.4.34"
+whisper-rs = "0.16.0"

@@ -10,7 +10,7 @@ class FasterWhisperSTT:
     def __init__(
         self,
         model: str = "base.en",
-        download_root: str | Path = "models/whisper",
+        download_root: str | Path = "../models/whisper",
         device: str = "cpu",
         compute_type: str = "int8",
     ) -> None:

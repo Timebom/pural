@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use rand::prelude::IndexedRandom;
-use rand::seq::IndexedMutRandom;
 
 use crate::assistant::interfaces::ToolResult;
 

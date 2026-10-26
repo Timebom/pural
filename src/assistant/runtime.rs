@@ -1,10 +1,13 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use crate::assistant::core::dispatcher::Dispatcher;
-use crate::assistant::interfaces::IntentEngine;
+use crate::assistant::interfaces::{IntentEngine, STT};
 use crate::assistant::tools::{calculator, clock, fun};
 use crate::assistant::tools::timer::TimerManager;
 use crate::assistant::tools::volume::VolumeControl;
+use crate::assistant::vad::{record_until_silence, SileroVAD};
+use crate::assistant::audio::frames;
 
 pub fn build_dispatcher<F>(notify: F) -> Dispatcher
 where
@@ -51,4 +54,43 @@ pub fn handle(text: &str, engine: &impl IntentEngine, dispatcher: &Dispatcher) -
         Some(intent) => dispatcher.run(&intent).message,
         None => "Sorry, I didn't catch that.".to_string(),
     }
+}
+
+/// Capture one utterance from the mic and return its text (`""` if nobody spoke).
+pub fn listen_once(vad: &mut SileroVAD, stt: &impl STT) -> String {
+    let stream = match frames(None) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("failed to open mic: {e}");
+            return String::new();
+        }
+    };
+
+    // Stream is dropped at end of scope → mic is released
+    let clip = record_until_silence(
+        vad,
+        std::iter::from_fn(|| stream.next_frame()),
+        5.0,  // wait_seconds
+        0.8,  // silence_seconds
+        15.0, // max_seconds
+        4,    // preroll_frames
+    );
+
+    let Some(clip) = clip else {
+        return String::new();
+    };
+
+    let start = Instant::now();
+    let text = stt.transcribe(&clip);
+    let elapsed = start.elapsed().as_secs_f32();
+    let audio_secs = clip.len() as f32 / 16_000.0;
+
+    log::info!(
+        "transcribed {:.1} seconds of audio in {:.2} seconds: {:?}",
+        audio_secs,
+        elapsed,
+        text
+    );
+
+    text
 }
