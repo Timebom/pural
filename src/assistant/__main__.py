@@ -96,9 +96,6 @@ def main() -> None:
                 reply = conversation.respond(answer)
         except (EOFError, KeyboardInterrupt):
             break
-        reply = conversation.respond(text)
-        print("assistant>", reply.text)
-        speaker.say(reply.text)
 
 
 if __name__ == "__main__":
