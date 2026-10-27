@@ -15,7 +15,7 @@ def build_default_engine() -> RuleEngine:
 
     e.add("set_timer", r"\btimer\s+for\s+(?P<duration>.+)")
     e.add("set_timer", r"\b(?:set|start)\s+(?:a|an)\s+(?P<duration>.+?)\s+timer\b")
-    e.add("set_timer", r"\b(?:set|start)\s+(?:a|an)\s+timer\b")
+        e.add("set_timer", r"\b(?:set|start)\s+(?:(?:a|an)\s+)?timer\b")
 
     e.add("set_volume", r"\bvolume\s+(?:to|at)\s+(?P<level>\d{1,3})\b")
     e.add("set_volume", r"\b(?:set|change) (?:the )?volume\b")
