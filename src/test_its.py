@@ -1,12 +1,12 @@
-from assistant.audio import frames, save_wav, SAMPLE_RATE
+from assistant.audio import SAMPLE_RATE, frames, save_wav
 from assistant.speaker import Speaker
+from assistant.stt import FasterWhisperSTT
 from assistant.tts import PiperTTS
 from assistant.vad import SileroVAD, record_until_silence
-from assistant.stt import FasterWhisperSTT
 
-speaker = Speaker(PiperTTS("models/tts/en_US-lessac-medium.onnx"))
-vad = SileroVAD("models/vad/silero_vad.onnx")
-stt = FasterWhisperSTT("base.en")
+speaker = Speaker(PiperTTS("../models/tts/en_GB-alba-medium.onnx"))
+vad = SileroVAD("../models/vad/silero_vad.onnx")
+stt = FasterWhisperSTT("base.en", download_root="../models/whisper")
 
 for attempt in range(3):
     speaker.say("For how long?")

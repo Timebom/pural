@@ -8,6 +8,7 @@ from assistant.runtime import build_dispatcher
 from assistant.speaker import Speaker
 from assistant.tts import PiperTTS
 
+ANSWER_SILENCE = 1.2
 TTS_MODEL = "../models/tts/en_GB-alba-medium.onnx"
 VAD_MODEL = "../models/vad/silero_vad.onnx"
 WAKE_PHRASE = "hey_jarvis"
@@ -64,10 +65,10 @@ def main() -> None:
         return input("you> ").strip() or None
 
     def get_answer() -> str:
-        """Answer to a question we just asked: no wake word, no Enter."""
+        """Answer to a question we just asked: no wake word, more patient than a command."""
         if voice_mode:
             print("listening...")
-            return listen_once(vad, stt)
+            return listen_once(vad, stt, silence_seconds=ANSWER_SILENCE)
         return input("you> ").strip()
 
     while True:

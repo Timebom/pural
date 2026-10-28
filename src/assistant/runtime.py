@@ -33,14 +33,6 @@ def build_dispatcher(notify: Callable[[str], None]) -> Dispatcher:
     return d
 
 
-# def handle(text: str, engine: IntentEngine, dispatcher: Dispatcher) -> str:
-#     """One full turn: text in, speakable reply out."""
-#     intent = engine.parse(text)
-#     if intent is None:
-#         return "Sorry, I didn't catch that."
-#     return dispatcher.run(intent).message
-
-
 def _transcribe(clip, stt: STT) -> str:
     start = time.perf_counter()
     text = stt.transcribe(clip)
@@ -48,10 +40,11 @@ def _transcribe(clip, stt: STT) -> str:
         len(clip) / 16_000, time.perf_counter() - start, text)
     return text
 
-def listen_once(vad: SileroVAD, stt: STT) -> str:
-    """Capture one utterance from the mic and return its text ('' if nobody spoke)."""
-    with closing(frames()) as source: # guarantees the mic is released
-        clip = record_until_silence(vad, source)
+
+def listen_once(vad: SileroVAD, stt: STT, silence_seconds: float = 0.8) -> str:
+    """Capture one utterance now. A longer silence_seconds tolerates thinking pauses."""
+    with closing(frames()) as source:
+        clip = record_until_silence(vad, source, silence_seconds=silence_seconds)
     return "" if clip is None else _transcribe(clip, stt)
 
 
