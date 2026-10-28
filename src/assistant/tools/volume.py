@@ -4,6 +4,7 @@ import shutil
 import subprocess
 from typing import Protocol
 
+from assistant.core.parsing import parse_number
 from assistant.interfaces import FollowUp, ToolResult
 
 STEP = 10
@@ -79,12 +80,11 @@ class VolumeControl:
         return ToolResult(True, f"Volume {level} percent.", {"level": level})
 
     def set_volume(self, slots: dict[str, str]) -> ToolResult:
-        try:
-            target = int(slots.get("level", ""))
-        except ValueError:
+        level = parse_number(slots.get("level", ""))
+        if level is None:
             return ToolResult(False, "What volume level?",
                 follow_up=FollowUp("set_volume", "level"))
-        return self._change(lambda b: target)
+        return self._change(lambda b: level)
 
     def volume_up(self, slots: dict[str, str]) -> ToolResult:
         return self._change(lambda b: b.get() + STEP)

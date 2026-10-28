@@ -29,6 +29,35 @@ def _as_number(token: str) -> float | None:
     return None
 
 
+def parse_number(text: str) -> int | None:
+    """'40' -> 40, 'forty five' -> 45, 'a hundred' -> 100, '40%' -> 40.
+    Finds the first number in the text. Returns None if there isn't one."""
+    tokens = text.lower().replace("-", " ").replace("%", " ").split()
+    value: int | None = None
+
+    for tok in tokens:
+        if tok == "hundred":
+            if value is None or 1 <= value <= 9:      # "hundred", "one hundred", not "forty hundred"
+                value = (1 if value is None else value) * 100
+                continue
+            break
+
+        number = _as_number(tok)
+        if number is None:
+            if value is not None:
+                break                                  # the number has ended
+            continue                                   # still searching: skip filler words
+
+        n = round(number)
+        if value is None:
+            value = n
+        elif 20 <= value < 100 and value % 10 == 0 and tok in _UNITS and n < 10:
+            value += n                                 # "twenty" + "five"
+        else:
+            break                                      # a second, separate number
+
+    return value
+
 
 def parse_duration(text: str) -> int | None:
     """'two and a half hours' -> 9000. Returns seconds, or None if no duration found."""
