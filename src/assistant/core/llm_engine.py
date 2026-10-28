@@ -61,7 +61,9 @@ Examples:
 "it's hurting my ears" -> {"intent": "volume_down", "argument": ""}
 "remind me in half an hour" -> {"intent": "set_timer", "argument": "half an hour"}
 "what's two hundred divided by four" -> {"intent": "calculate", "argument": "two hundred divided by four"}
-"set the volume to forty" -> {"intent": "set_volume", "argument": "forty"}"""
+"what's eleven plus nine" -> {"intent": "calculate", "argument": "eleven plus nine"}
+"set the volume to forty" -> {"intent": "set_volume", "argument": "forty"}
+"put the volume at forty five" -> {"intent": "set_volume", "argument": "forty five"}"""
 )
 
 _CHAT_RULES = (
@@ -84,7 +86,7 @@ _EVIDENCE = {
     "set_timer": r"timer|countdown|alarm|remind\w*|wake|seconds?|minutes?|hours?",
     "get_time": r"time|clock",
     "get_date": r"date|day|today|month|year|week",
-    "set_volume": _VOLUME_TOPIC + r"|level",
+    "set_volume": _VOLUME_TOPIC + r"|level|\b(?:to|at)\b",
     "volume_up": _VOLUME_TOPIC,
     "volume_down": _VOLUME_TOPIC,
     "calculate": rf"\d+|{_NUMBERS}|plus|minus|times|divid\w*|multipl\w*|percent|squared|over",
