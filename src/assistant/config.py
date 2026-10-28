@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -42,12 +43,24 @@ class TTSSettings(_Section):
     path: Path = Path("../models/tts/en_GB-alba-medium.onnx")
 
 
+class LLMSettings(_Section):
+    enabled: bool = False # Mode A (rules only) unless turned on
+    backend: Literal["ollama"] = "ollama"
+    model: str = "llama3.2"
+    host: str = "http://localhost:11434"
+    temperature: float = Field(0.0, ge=0, le=2) # 0 = repeatable routing
+    max_tokens: int = Field(150, gt=0)
+    keep_alive: str = "30m"
+    timeout: float = Field(60.0, gt=0)
+    history_turns: int = Field(4, ge=0)
+
 class Settings(_Section):
     audio: AudioSettings = Field(default_factory=AudioSettings)
     vad: VADSettings = Field(default_factory=VADSettings)
     wake: WakeSettings = Field(default_factory=WakeSettings)
     stt: STTSettings = Field(default_factory=STTSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
+    llm: LLMSettings = Field(default_factory=LLMSettings)
 
 
 def load_settings(path: str | Path | None = None) -> Settings:

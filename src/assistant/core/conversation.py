@@ -15,10 +15,21 @@ class Reply:
 
 
 class Conversation:
-    """Remembers whether the assistant is waiting for an answer."""
+    """Remembers whether the assistant is waiting for an answer.
 
-    def __init__(self, engine: IntentEngine, dispatcher: Dispatcher) -> None:
+    `command_engine` decides whether an utterance is a NEW command while a question is
+    pending. It should be the fast rule engine: an open-minded LLM would treat an
+    answer like "five minutes" as small talk.
+    """
+
+    def __init__(
+        self,
+        engine: IntentEngine,
+        dispatcher: Dispatcher,
+        command_engine: IntentEngine | None = None
+    ) -> None:
         self._engine = engine
+        self._command_engine = command_engine or engine
         self._dispatcher = dispatcher
         self._pending: FollowUp | None = None
         self._retries = 0
@@ -33,7 +44,7 @@ class Conversation:
             if cleaned in CANCEL_PHRASES:
                 self.cancel()
                 return Reply("Okay, never mind.")
-            fresh = self._engine.parse(text)
+            fresh = self._command_engine.parse(text)
             if fresh is None: # not a command: it's the answer
                 p = self._pending
                 filled = Intent(p.intent, {**p.slots, p.slot: cleaned})

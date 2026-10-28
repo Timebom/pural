@@ -7,7 +7,7 @@ from itertools import islice
 from assistant.audio import frames
 from assistant.core.dispatcher import Dispatcher
 from assistant.interfaces import STT
-from assistant.tools import calculator, clock, fun
+from assistant.tools import calculator, chat, clock, fun
 from assistant.tools.timer import TimerManager
 from assistant.tools.volume import VolumeControl, get_backend
 from assistant.vad import SileroVAD, record_until_silence
@@ -30,6 +30,7 @@ def build_dispatcher(notify: Callable[[str], None]) -> Dispatcher:
     d.register("set_volume", volume.set_volume)
     d.register("volume_up", volume.volume_up)
     d.register("volume_down", volume.volume_down)
+    d.register("chat_reply", chat.chat_reply)
     return d
 
 

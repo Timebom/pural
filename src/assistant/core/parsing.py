@@ -16,7 +16,7 @@ _SECONDS_PER = {
     "hour": 3600, "hours": 3600, "hr": 3600, "hrs": 3600,
 }
 _DIGITS = re.compile(r"^\d+(?:\.\d+)?$")
-
+NUMBER_WORDS = frozenset(_UNITS) | frozenset(_TENS) | {"hundred"}
 
 def _as_number(token: str) -> float | None:
     """'5' -> 5.0, '2.5' -> 2.5, 'five' -> 5.0, 'twenty'-> 20.0, else None"""

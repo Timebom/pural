@@ -10,11 +10,6 @@ from assistant.runtime import build_dispatcher
 from assistant.speaker import Speaker
 from assistant.tts import PiperTTS
 
-# ANSWER_SILENCE = 1.2
-# TTS_MODEL = "../models/tts/en_GB-alba-medium.onnx"
-# VAD_MODEL = "../models/vad/silero_vad.onnx"
-# WAKE_PHRASE = "hey_jarvis"
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="assistant")
@@ -41,9 +36,20 @@ def main() -> None:
         print(f"\nassistant> {message}")
         speaker.say(message)
 
-    engine = build_default_engine()
+    rules = build_default_engine()
+    engine = rules
+    if cfg.llm.enabled:
+        from assistant.core.chain import ChainEngine
+        from assistant.core.llm_engine import LLMEngine
+        from assistant.llm.factory import create_backend
+        backend = create_backend(cfg.llm)
+        problem = backend.check()
+        if problem:
+            print(f"LLM disabled: {problem}")
+        else:
+            engine = ChainEngine(rules, LLMEngine(backend, cfg.llm.history_turns))
     dispatcher = build_dispatcher(notify)
-    conversation = Conversation(engine, dispatcher)
+    conversation = Conversation(engine, dispatcher, command_engine=rules)
     voice_mode = args.voice or args.wake
 
     if voice_mode: # heavy imports only when needed
