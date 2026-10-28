@@ -11,4 +11,6 @@ dependencies = [
     "onnxruntime>=1.31.0",
     "faster-whisper>=1.2.1",
     "openwakeword>=0.6.0",
+    "pydantic>=2.14.1",
+    "pyyaml>=6.0.3",
 ]

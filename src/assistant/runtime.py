@@ -41,10 +41,10 @@ def _transcribe(clip, stt: STT) -> str:
     return text
 
 
-def listen_once(vad: SileroVAD, stt: STT, silence_seconds: float = 0.8) -> str:
+def listen_once(vad: SileroVAD, stt: STT, **record_opts) -> str:
     """Capture one utterance now. A longer silence_seconds tolerates thinking pauses."""
     with closing(frames()) as source:
-        clip = record_until_silence(vad, source, silence_seconds=silence_seconds)
+        clip = record_until_silence(vad, source, **record_opts)
     return "" if clip is None else _transcribe(clip, stt)
 
 
@@ -52,15 +52,17 @@ def wake_turn(
     detector: WakeWordDetector,
     vad: SileroVAD,
     stt: STT,
-    on_wake: Callable[[], None]
+    on_wake: Callable[[], None],
+    device: int | None = None,
+    **record_opts
 ) -> str:
     """Block until the wake phrase, then capture one command on the same mic stream."""
     detector.reset()
-    with closing(frames()) as source:
+    with closing(frames(device)) as source:
         if not wait_for_wakeword(detector, source):
             return ""
         on_wake()
         for _ in islice(source, SETTLE_FRAMES):
             pass
-        clip = record_until_silence(vad, source)
+        clip = record_until_silence(vad, source, **record_opts)
     return "" if clip is None else _transcribe(clip, stt)
