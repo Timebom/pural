@@ -28,12 +28,12 @@ pub fn build_default_engine() -> RuleEngine {
     )
     .expect("invalid regex");
 
-    e.add("set_timer", r"\b(?:set|start)\s+(?:a|an)\s+timer\b", 1.0)
+    e.add("set_timer", r"\b(?:set|start)\s+(?:(?:a|an)\s+)?timer\b", 1.0)
         .expect("invalid regex");
 
     e.add(
         "set_volume",
-        r"\bvolume\s+(?:to|at)\s+(?P<level>\d{1,3})\b",
+        r"\bvolume\s+(?:to|at)\s+(?P<level>.+)",
         1.0,
     )
     .expect("invalid regex");

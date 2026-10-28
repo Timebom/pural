@@ -1,4 +1,5 @@
 import queue
+import wave
 from collections.abc import Iterator
 
 import numpy as np
@@ -63,3 +64,11 @@ def chime(freq: float = 880.0, seconds: float = 0.12) -> np.ndarray:
     tone = np.sin(2 * np.pi * freq * t)
     fade = np.minimum(1.0, np.minimum(t, seconds - t) / 0.01)   # 10 ms in/out
     return (0.3 * tone * fade).astype(np.float32)
+
+def save_wav(path: str, audio: np.ndarray, rate: int = SAMPLE_RATE) -> None:
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+    with wave.open(path, "wb") as f:
+        f.setnchannels(1)      # mono
+        f.setsampwidth(2)      # 2 bytes = int16
+        f.setframerate(rate)
+        f.writeframes(pcm.tobytes())

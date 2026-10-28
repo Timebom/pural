@@ -73,6 +73,49 @@ fn as_number(token: &str) -> Option<f64> {
     None
 }
 
+/// `"40"` → `Some(40)`, `"forty five"` → `Some(45)`, `"a hundred"` → `Some(100)`, `"40%"` → `Some(40)`.
+/// Finds the first number in the text. Returns `None` if there isn't one.
+pub fn parse_number(text: &str) -> Option<i32> {
+    let tokens: Vec<&str> = text
+        .to_lowercase()
+        .replace('-', " ")
+        .replace('%', " ")
+        .split_whitespace()
+        .collect();
+
+    let mut value: Option<i32> = None;
+
+    for tok in tokens {
+        if tok == "hundred" {
+            if value.is_none() || (1..=9).contains(&value.unwrap()) {
+                // "hundred", "one hundred", not "forty hundred"
+                value = Some(value.unwrap_or(1) * 100);
+                continue;
+            }
+            break;
+        }
+
+        let Some(number) = as_number(tok) else {
+            if value.is_some() {
+                break; // the number has ended
+            }
+            continue; // still searching: skip filler words
+        };
+
+        let n = number.round() as i32;
+
+        match value {
+            None => value = Some(n),
+            Some(v) if (20..100).contains(&v) && v % 10 == 0 && units().contains_key(tok) && n < 10 => {
+                value = Some(v + n); // "twenty" + "five"
+            }
+            _ => break, // a second, separate number
+        }
+    }
+
+    value
+}
+
 /// `"two and a half hours"` → `Some(9000)`.
 /// Returns seconds, or `None` if no duration found.
 pub fn parse_duration(text: &str) -> Option<i64> {
