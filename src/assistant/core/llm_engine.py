@@ -22,6 +22,8 @@ INTENT_SLOTS: dict[str, str | None] = {
     "volume_down": None,
     "calculate": "expression",
     "tell_joke": None,
+    "get_weather": "location",
+    "web_search": "query",
 }
 CHAT = "chat"
 
@@ -45,6 +47,8 @@ Intents:
 - volume_down: the user wants less volume: quieter, turn it down, too loud.
 - calculate: do arithmetic. argument = the expression, e.g. "12 times 3".
 - tell_joke: ONLY when the user asks for a joke or something to make them laugh.
+- get_weather: the user asks about the weather or a forecast. argument = the place and/or "tomorrow" if mentioned, else empty.
+- web_search: ONLY when the user explicitly asks to search, google or look something up online. argument = what to search for.
 - chat: everything else, including questions, facts, trivia, stories, advice, greetings and small talk.
 
 Rules:
@@ -52,6 +56,10 @@ Rules:
 - The argument is a short phrase copied from the request, or empty. For chat it is ALWAYS empty.
 
 Examples:
+"what's the weather in Paris" -> {"intent": "get_weather", "argument": "Paris"}
+"is it going to rain tomorrow" -> {"intent": "get_weather", "argument": "tomorrow"}
+"search the web for the best pizza recipe" -> {"intent": "web_search", "argument": "the best pizza recipe"}
+"what's the capital of Italy" -> {"intent": "chat", "argument": ""}
 "what's the population of India" -> {"intent": "chat", "argument": ""}
 "what's the tallest mountain" -> {"intent": "chat", "argument": ""}
 "give me an interesting fact about whales" -> {"intent": "chat", "argument": ""}
@@ -63,7 +71,8 @@ Examples:
 "what's two hundred divided by four" -> {"intent": "calculate", "argument": "two hundred divided by four"}
 "what's eleven plus nine" -> {"intent": "calculate", "argument": "eleven plus nine"}
 "set the volume to forty" -> {"intent": "set_volume", "argument": "forty"}
-"put the volume at forty five" -> {"intent": "set_volume", "argument": "forty five"}"""
+"put the volume at forty five" -> {"intent": "set_volume", "argument": "forty five"}
+"""
 )
 
 _CHAT_RULES = (
@@ -86,11 +95,13 @@ _EVIDENCE = {
     "set_timer": r"timer|countdown|alarm|remind\w*|wake|seconds?|minutes?|hours?",
     "get_time": r"time|clock",
     "get_date": r"date|day|today|month|year|week",
-    "set_volume": _VOLUME_TOPIC + r"|level|\b(?:to|at)\b",
+    "set_volume": _VOLUME_TOPIC + r"|level", # |\b(?:to|at)\b
     "volume_up": _VOLUME_TOPIC,
     "volume_down": _VOLUME_TOPIC,
     "calculate": rf"\d+|{_NUMBERS}|plus|minus|times|divid\w*|multipl\w*|percent|squared|over",
     "tell_joke": r"jok\w*|laugh\w*|funny|puns?|humou?r",
+    "get_weather": r"weather|forecast|rain\w*|snow\w*|temperature|sunny|cloudy|windy|umbrella|humid\w*|hot|cold",
+    "web_search": r"search\w*|google|look|find|web|internet|online",
 }
 _EVIDENCE = {k: re.compile(rf"\b(?:{v})\b") for k, v in _EVIDENCE.items()}
 

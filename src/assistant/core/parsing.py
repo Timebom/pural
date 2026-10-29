@@ -16,7 +16,45 @@ _SECONDS_PER = {
     "hour": 3600, "hours": 3600, "hr": 3600, "hrs": 3600,
 }
 _DIGITS = re.compile(r"^\d+(?:\.\d+)?$")
+_HYPHEN_BETWEEN_LETTERS = re.compile(r"(?<=[a-z])-(?=[a-z])")
 NUMBER_WORDS = frozenset(_UNITS) | frozenset(_TENS) | {"hundred"}
+
+
+def _read_number(tokens: list[str], i: int) -> tuple[int, int] | None:
+    """Read one number (0-999) at tokens[i]. Returns (value, index after it), or None.
+    'forty five' -> 45, 'a hundred' -> 100, 'two hundred and five' -> 205, '40' -> 40."""
+
+    def at(k: int) -> str:
+        return tokens[k] if k < len(tokens) else ""
+
+    def below_100(k: int) -> tuple[int, int] | None:
+        word = at(k)
+        if word in _TENS:
+            unit = _UNITS.get(at(k + 1), 0)
+            if 1 <= unit <= 9:
+                return _TENS[word] + unit, k + 2          # "forty five"
+            return _TENS[word], k + 1
+        if word in _UNITS:
+            return _UNITS[word], k + 1
+        if _DIGITS.match(word):
+            return round(float(word)), k + 1
+        return None
+
+    first = below_100(i)
+    if first is not None and first[0] < 10 and at(first[1]) == "hundred":   # "two hundred ..."
+        value, j = first[0] * 100, first[1] + 1
+    elif at(i) in ("a", "an") and at(i + 1) == "hundred":                  # "a hundred ..."
+        value, j = 100, i + 2
+    elif at(i) == "hundred":                                               # "hundred ..."
+        value, j = 100, i + 1
+    else:
+        return first                                                       # plain 0-99, or None
+    k = j + 1 if at(j) == "and" else j                                     # "hundred and five"
+    rest = below_100(k)
+    if rest is not None and rest[0] < 100:
+        return value + rest[0], rest[1]
+    return value, j                                                        # don't consume a dangling "and"
+
 
 def _as_number(token: str) -> float | None:
     """'5' -> 5.0, '2.5' -> 2.5, 'five' -> 5.0, 'twenty'-> 20.0, else None"""
@@ -33,30 +71,29 @@ def parse_number(text: str) -> int | None:
     """'40' -> 40, 'forty five' -> 45, 'a hundred' -> 100, '40%' -> 40.
     Finds the first number in the text. Returns None if there isn't one."""
     tokens = text.lower().replace("-", " ").replace("%", " ").split()
-    value: int | None = None
+    for i in range(len(tokens)):
+        found = _read_number(tokens, i)
+        if found is not None:
+            return found[0]
+    return None
 
-    for tok in tokens:
-        if tok == "hundred":
-            if value is None or 1 <= value <= 9:      # "hundred", "one hundred", not "forty hundred"
-                value = (1 if value is None else value) * 100
-                continue
-            break
 
-        number = _as_number(tok)
-        if number is None:
-            if value is not None:
-                break                                  # the number has ended
-            continue                                   # still searching: skip filler words
-
-        n = round(number)
-        if value is None:
-            value = n
-        elif 20 <= value < 100 and value % 10 == 0 and tok in _UNITS and n < 10:
-            value += n                                 # "twenty" + "five"
+def words_to_digits(text: str) -> str:
+    """'seven plus nine' -> '7 plus 9'. Digits, symbols and minus signs are left alone."""
+    tokens = _HYPHEN_BETWEEN_LETTERS.sub(" ", text.lower()).split()
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        found = None
+        if tokens[i] in NUMBER_WORDS or tokens[i] in ("a", "an"):
+            found = _read_number(tokens, i)
+        if found is None:
+            out.append(tokens[i])
+            i += 1
         else:
-            break                                      # a second, separate number
-
-    return value
+            out.append(str(found[0]))
+            i = found[1] # skip exactly the tokens the number used
+    return " ".join(out)
 
 
 def parse_duration(text: str) -> int | None:

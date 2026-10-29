@@ -54,6 +54,25 @@ class LLMSettings(_Section):
     timeout: float = Field(60.0, gt=0)
     history_turns: int = Field(4, ge=0)
 
+
+class WeatherSettings(_Section):
+    default_location: str = ""          # e.g. "Mumbai". Empty = ask every time.
+    timeout: float = Field(8.0, gt=0)
+
+
+class SearchSettings(_Section):
+    region: str = "us-en"               # "in-en" for India
+    backend: str = "auto"               # "duckduckgo" = ask one engine only
+    max_results: int = Field(5, ge=1, le=30)
+    timeout: int = Field(8, ge=1)
+
+
+class ToolsSettings(_Section):
+    online: bool = True                 # weather and web search contact third-party servers
+    weather: WeatherSettings = Field(default_factory=WeatherSettings)
+    search: SearchSettings = Field(default_factory=SearchSettings)
+
+
 class Settings(_Section):
     audio: AudioSettings = Field(default_factory=AudioSettings)
     vad: VADSettings = Field(default_factory=VADSettings)
@@ -61,6 +80,7 @@ class Settings(_Section):
     stt: STTSettings = Field(default_factory=STTSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    tools: ToolsSettings = Field(default_factory=ToolsSettings)
 
 
 def load_settings(path: str | Path | None = None) -> Settings:

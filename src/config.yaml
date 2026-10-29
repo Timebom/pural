@@ -10,3 +10,8 @@ stt:
 llm:
   enabled: true
   model: llama3.2
+tools:
+  weather:
+    default_location: Mumbai
+  search:
+    region: in-en

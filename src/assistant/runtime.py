@@ -5,11 +5,14 @@ from contextlib import closing
 from itertools import islice
 
 from assistant.audio import frames
+from assistant.config import ToolsSettings
 from assistant.core.dispatcher import Dispatcher
-from assistant.interfaces import STT
+from assistant.interfaces import STT, ToolResult
 from assistant.tools import calculator, chat, clock, fun
+from assistant.tools.search import WebSearch
 from assistant.tools.timer import TimerManager
 from assistant.tools.volume import VolumeControl, get_backend
+from assistant.tools.weather import WeatherTool
 from assistant.vad import SileroVAD, record_until_silence
 from assistant.wakeword import WakeWordDetector, wait_for_wakeword
 
@@ -18,7 +21,8 @@ SETTLE_FRAMES = 3
 log = logging.getLogger(__name__)
 
 
-def build_dispatcher(notify: Callable[[str], None]) -> Dispatcher:
+def build_dispatcher(notify: Callable[[str], None], tools_cfg: ToolsSettings | None = None) -> Dispatcher:
+    cfg = tools_cfg or ToolsSettings()
     d = Dispatcher()
     timers = TimerManager(on_fire=notify)
     volume = VolumeControl(get_backend())
@@ -31,6 +35,17 @@ def build_dispatcher(notify: Callable[[str], None]) -> Dispatcher:
     d.register("volume_up", volume.volume_up)
     d.register("volume_down", volume.volume_down)
     d.register("chat_reply", chat.chat_reply)
+    if cfg.online:
+        weather = WeatherTool(cfg.weather.default_location, cfg.weather.timeout)
+        search = WebSearch(cfg.search.region, cfg.search.backend,
+            cfg.search.max_results, cfg.search.timeout)
+        d.register("get_weather", weather.get_weather)
+        d.register("web_search", search.web_search)
+    else:
+        def offline(slots: dict[str, str]) -> ToolResult:
+            return ToolResult(False, "Online tools are turned off in my settings.")
+        d.register("get_weather", offline)
+        d.register("web_search", offline)
     return d
 
 

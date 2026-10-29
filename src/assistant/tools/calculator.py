@@ -2,6 +2,7 @@ import ast
 import operator
 import re
 
+from assistant.core.parsing import words_to_digits
 from assistant.interfaces import ToolResult
 
 _BINARY = {
@@ -40,6 +41,7 @@ def _eval(node: ast.AST) -> float:
 
 def calculate(slots: dict[str,str]) -> ToolResult:
     expr = slots.get("expression", "")
+    expr = words_to_digits(expr)
     for pattern, symbol in _SPOKEN:
         expr = pattern.sub(f" {symbol} ", expr)
     try:

@@ -48,7 +48,7 @@ def main() -> None:
             print(f"LLM disabled: {problem}")
         else:
             engine = ChainEngine(rules, LLMEngine(backend, cfg.llm.history_turns))
-    dispatcher = build_dispatcher(notify)
+    dispatcher = build_dispatcher(notify, cfg.tools)
     conversation = Conversation(engine, dispatcher, command_engine=rules)
     voice_mode = args.voice or args.wake
 
