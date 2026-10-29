@@ -1,140 +1,91 @@
-# Pure Python Siri-like Voice Assistant
+# Pural
 
-Fully offline, modular, privacy-first voice assistant written entirely in Python.  
-Wake-word activated, local STT + TTS, rule-based + optional lightweight LLM intent handling, and a set of practical tools.
+Fully local, modular voice assistant. Wake-word or push-to-talk, offline STT/TTS, rule-based intents + optional small LLM, and practical tools.
 
-**Target:** Linux (primary), Windows, macOS, Android (Termux/BeeWare)  
-**Hardware:** Any GPU + CPU fallback
+**Privacy-first** · Runs entirely on your machine after model download.
 
-## Goals
+## Features
 
-- Always-listening wake-word assistant that feels close to classic Siri
-- 100% local after initial model download
-- Modular packages that can be used independently
-- Two modes: fast deterministic (No-LLM) and natural language (small LLM)
-- Trainable components (wake word, optional LLM fine-tune)
+- **Three input modes**
+  - Text (type commands)
+  - Push-to-talk (`--voice`)
+  - Always-listening wake word (`--wake`)
+- Rule engine (fast, deterministic) + optional LLM fallback (Ollama)
+- Streaming local STT (Faster-Whisper) and TTS (Piper)
+- Silero VAD + OpenWakeWord
+- Tools: time/date, timers, volume, calculator, reminders, weather, web search, jokes
+- Config via YAML + environment variables
+- Parallel Rust port in progress
 
-## Non-Goals (v1)
+## Quick Start (Python)
 
-- Exact Apple Siri APIs or proprietary models
-- Cloud dependency for core features
-- Multi-user / enterprise auth
-- App Store distribution
+```bash
+# Clone
+git clone https://github.com/Timebom/pural.git
+cd pural
+
+# Install (Python ≥ 3.11)
+pip install -e .
+
+# Download models (place under models/)
+# - TTS: Piper voice (e.g. en_GB-alba-medium.onnx)
+# - VAD: silero_vad.onnx
+# - Whisper: base.en (or larger)
+# - Wake word: OpenWakeWord models
+
+# Run
+python -m assistant                  # text mode
+python -m assistant --voice          # push-to-talk
+python -m assistant --wake           # wake-word mode
+python -m assistant --verbose        # timing logs
+
+# Optional Config
+python -m assistant --config path/to/config.yaml
+```
+See src/config.yaml for defaults (wake phrase, VAD thresholds, LLM model, tool settings, etc.).
 
 ## Architecture
-```
-Microphone → VAD → Wake Word → Record until silence → STT → Intent/LLM → Tools → TTS → Speaker
-```
-Conversation history kept in memory (optional SQLite persistence).
+```Mic → VAD → Wake Word (optional) → Record → STT → Rules / LLM → Tools → TTS → Speaker```
+- Rules first (regex + slots) for low latency
+- LLM only when rules don't match (and when enabled)
+- Tools are registered in a simple dispatcher
 
-### Core Modules
+## Project Layout
+```src/
+├── assistant/               # Python package (main)
+│   ├── audio.py
+│   ├── vad.py / stt.py / tts.py / wakeword.py / speaker.py
+│   ├── config.py
+│   ├── runtime.py
+│   ├── core/                # rules, intents, conversation, LLM chain
+│   ├── tools/               # calculator, clock, timer, volume, weather...
+│   └── llm/                 # Ollama backend etc.
+├── assistant.rs             # Rust module root
+├── main.rs                  # Rust entry point
+└── config.yaml```
+Rust side reimplements the same modules (audio, VAD, STT, TTS, rules, tools) using cpal, whisper-rs, piper-rs, oww-rs, etc.
 
-| Module                    | Responsibility                          | Key Dependencies              |
-|---------------------------|-----------------------------------------|-------------------------------|
-| `pural.audio`   | Capture, playback, streaming            | sounddevice, numpy            |
-| `pural.vad`     | Voice Activity Detection                | silero-vad / onnxruntime      |
-| `pural.wakeword`| Custom wake-word detection              | openwakeword                  |
-| `pural.stt`     | Speech-to-Text (streaming preferred)    | faster-whisper                |
-| `pural.tts`     | Text-to-Speech with streaming           | piper-tts                     |
-| `pural.core`    | Intent parsing + LLM + tools            | ollama / llama-cpp-python     |
-| `pural.tools`   | Individual actions                      | stdlib + optional APIs        |
-| `pural.runtime` | Main event loop & orchestration         | asyncio                       |
-| `pural.config`  | Settings, paths, model locations        | pydantic / yaml               |
+## Tools
+|Tool|Description|
+|Time / Date|Current time and date|
+|Timer|Set countdown timers|
+|Volume|Set / up / down (system volume)|
+|Calculator|Basic math expressions|
+|Reminders|Create, list, delete reminders|
+|Weather|Current / forecast (Open-Meteo)|
+|Web Search|DuckDuckGo (when online tools on)|
+|Jokes|Simple joke replies|
 
-### Operating Modes
-
-**Mode A – No-LLM (Classic)**  
-Regex + fuzzy matching + finite-state machine. Fast, deterministic, low latency. Implemented first.
-
-**Mode B – Lightweight LLM**  
-Ollama or llama-cpp-python with small quantized models (Phi-4-mini, Gemma-2 2B, Llama-3.2 1B/3B). Natural language + tool calling. Falls back to Mode A if model unavailable.
-
-## Technology Stack
-
-| Layer          | Choice                          | Notes                              |
-|----------------|---------------------------------|------------------------------------|
-| Language       | Python 3.11 / 3.12              | ROCm support                       |
-| Wake Word      | OpenWakeWord                    | Trainable, lightweight             |
-| VAD            | Silero VAD (ONNX)               | Fast & accurate                    |
-| STT            | Faster-Whisper (CTranslate2)    | Best local speed/accuracy          |
-| LLM Runtime    | Ollama or llama-cpp-python      | GGUF; ROCm via Ollama possible     |
-| LLM Models     | Phi-4-mini / Gemma-2-2B Q4      | Strong small models, low VRAM      |
-| TTS            | Piper TTS                       | Offline, high quality, streaming   |
-| Audio I/O      | sounddevice + numpy             | Cross-platform, low latency        |
-| CLI            | Typer + Rich                    | Modern terminal UX                 |
-| GUI (optional) | CustomTkinter or Dear PyGui     | Lightweight desktop UI             |
-| Config         | Pydantic Settings + YAML        | Type-safe                          |
-| Persistence    | SQLite (optional)               | Session history / memory           |
-| Packaging      | PyInstaller / Nuitka / AppImage | Single-file or portable            |
-
-Pure-CPU path is always kept working for reliability.
-
-## Project Structure
-```
-siri-python-clone/
-├── pyproject.toml
-├── requirements.txt
-├── requirements-training.txt
-├── README.md
-├── src/
-│   └── voice_assistant/
-│       ├── init.py
-│       ├── audio.py
-│       ├── vad.py
-│       ├── wakeword.py
-│       ├── stt.py
-│       ├── tts.py
-│       ├── config.py
-│       ├── core/
-│       │   ├── intents.py      # No-LLM engine
-│       │   ├── llm.py          # LLM + function calling
-│       │   └── memory.py
-│       ├── tools/
-│       │   ├── timer.py
-│       │   ├── weather.py
-│       │   ├── system.py
-│       │   ├── media.py
-│       │   └── ...
-│       └── runtime.py
-├── cli/
-│   └── main.py
-├── gui/                        # Phase 2
-│   └── app.py
-├── training/
-│   ├── train_wakeword.py
-│   ├── fine_tune_llm.py
-│   ├── quantize.py
-│   └── datasets/
-├── models/                     # .gitignore
-│   ├── wakeword/
-│   ├── whisper/
-│   ├── llm/
-│   └── tts/
-├── tests/
-└── scripts/
-├── download_models.py
-└── package.sh
-```
-
-## Tools (Initial Set)
-
-- Timer & Alarm
-- Weather (Open-Meteo + offline cache)
-- System volume / brightness
-- Media control (MPRIS on Linux)
-- Calculator
-- Jokes / fun responses
-- Reminders
-- Time / Date
-- Web search fallback
-- Calendar view
-- Shutdown / Suspend (with confirmation)
+Online tools (weather, search) can be disabled in config.
 
 ## Configuration
+All settings live in a Pydantic model loaded from YAML or env.
+Key sections:
+- `vad` – silence thresholds, wait times
+- `wake` – phrase + threshold
+- `stt` – model + device
+- `llm` – enable + model name
+- `tools` – online flag, default location, search region
 
-All settings centralized in a Pydantic model loaded from YAML or environment variables.  
-Supports profiles (quiet office, noisy environment, low-power) that adjust thresholds and model sizes.
-
-## License
-
+## Licence
 Apache-2.0
