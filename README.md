@@ -51,7 +51,8 @@ See src/config.yaml for defaults (wake phrase, VAD thresholds, LLM model, tool s
 - Tools are registered in a simple dispatcher
 
 ## Project Layout
-```src/
+```
+src/
 ├── assistant/               # Python package (main)
 │   ├── audio.py
 │   ├── vad.py / stt.py / tts.py / wakeword.py / speaker.py
@@ -62,7 +63,8 @@ See src/config.yaml for defaults (wake phrase, VAD thresholds, LLM model, tool s
 │   └── llm/                 # Ollama backend etc.
 ├── assistant.rs             # Rust module root
 ├── main.rs                  # Rust entry point
-└── config.yaml```
+└── config.yaml
+```
 Rust side reimplements the same modules (audio, VAD, STT, TTS, rules, tools) using cpal, whisper-rs, piper-rs, oww-rs, etc.
 
 ## Tools
