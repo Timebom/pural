@@ -68,15 +68,16 @@ src/
 Rust side reimplements the same modules (audio, VAD, STT, TTS, rules, tools) using cpal, whisper-rs, piper-rs, oww-rs, etc.
 
 ## Tools
-|Tool|Description|
-|Time / Date|Current time and date|
-|Timer|Set countdown timers|
-|Volume|Set / up / down (system volume)|
-|Calculator|Basic math expressions|
-|Reminders|Create, list, delete reminders|
-|Weather|Current / forecast (Open-Meteo)|
-|Web Search|DuckDuckGo (when online tools on)|
-|Jokes|Simple joke replies|
+| Tool | Description |
+|----|------------|
+| Time / Date | Current time and date |
+| Timer | Set countdown timers |
+| Volume | Set / up / down (system volume) |
+| Calculator | Basic math expressions |
+| Reminders | Create, list, delete reminders |
+| Weather | Current / forecast (Open-Meteo) |
+| Web Search | DuckDuckGo (when online tools on) |
+| Jokes | Simple joke replies |
 
 Online tools (weather, search) can be disabled in config.
 
