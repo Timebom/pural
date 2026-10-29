@@ -11,7 +11,9 @@ llm:
   enabled: true
   model: llama3.2
 tools:
+  online: false
   weather:
     default_location: Mumbai
   search:
     region: in-en
+    backend: duckduckgo

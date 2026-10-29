@@ -10,6 +10,16 @@ def build_default_engine() -> RuleEngine:
         r"\b(?:search|look up|google)\s+(?:(?:the\s+)?(?:web|internet|online)\s+)?(?:for\s+)?(?P<query>.+)")
     e.add("web_search", r"\b(?:search|look up|google)\b")        # no query -> asks for one
 
+    # Reminders.
+    e.add("delete_reminder", r"\b(?:delete|cancel|remove|clear)\s+(?P<task>all|every)\b.*\breminders?\b")
+    e.add("delete_reminder", r"\b(?:delete|cancel|remove)\s+(?:my\s+|the\s+)?reminder\s+(?:about\s+|to\s+|for\s+)?(?P<task>.+)")
+    e.add("delete_reminder", r"\b(?:delete|cancel|remove)\s+(?:my\s+|the\s+)?(?P<task>.+?)\s+reminders?\b")
+    e.add("delete_reminder", r"\b(?:delete|cancel|remove|clear)\b.*\breminders?\b")
+    e.add("list_reminders", r"\breminders\b|\bnext reminder\b")
+    e.add("set_reminder", r"\b(?:set|add|create|make)\s+(?:a\s+|an\s+)?reminder\s+(?:to\s+|about\s+|for\s+|that\s+)?(?P<text>.+)")
+    e.add("set_reminder", r"\bremind me\s+(?:to\s+|about\s+|that\s+)?(?P<text>.+)")
+    e.add("set_reminder", r"\b(?:set|add|create|make)\s+(?:a\s+|an\s+)?reminder\b|\bremind me\b")
+
     # Weather: with a place, then with only a day, then bare.
     e.add("get_weather", r"\b(?:weather|forecast)\b.*?\b(?:in|at|for)\s+(?P<location>.+)")
     e.add("get_weather", r"\b(?:weather|forecast)\b.*?\b(?P<day>tomorrow)\b")

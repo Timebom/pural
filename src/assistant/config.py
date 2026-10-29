@@ -67,10 +67,15 @@ class SearchSettings(_Section):
     timeout: int = Field(8, ge=1)
 
 
+class RemindersSettings(_Section):
+    path: Path = Path.home() / ".assistant" / "reminders.json"
+
+
 class ToolsSettings(_Section):
     online: bool = True                 # weather and web search contact third-party servers
     weather: WeatherSettings = Field(default_factory=WeatherSettings)
     search: SearchSettings = Field(default_factory=SearchSettings)
+    reminders: RemindersSettings = Field(default_factory=RemindersSettings)
 
 
 class Settings(_Section):

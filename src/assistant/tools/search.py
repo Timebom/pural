@@ -14,7 +14,7 @@ class SearchError(Exception):
     """A search failed. str(error) is a sentance that is safe to speak."""
 
 
-def _speakable(snippet: str, limit: int = 280, max_sentences: int = 2) -> str:
+def _speakable(snippet: str, limit: int = 280, max_sentences: int = 1) -> str:
     """Turn a search snippet into something pleasent to hear."""
     text = re.sub(r"https?://\S+", "", snippet)
     text = re.sub(r"[^\w\s.,;:!?'\"%$&()/+-]", " ", text)       # drop emoji and stray symbols

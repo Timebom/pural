@@ -54,6 +54,7 @@ Intents:
 Rules:
 - A question about facts, people, places, science, trivia or advice is ALWAYS chat, even if it starts with "what's the".
 - The argument is a short phrase copied from the request, or empty. For chat it is ALWAYS empty.
+- For set_timer the argument must include the unit: seconds, minutes or hours.
 
 Examples:
 "what's the weather in Paris" -> {"intent": "get_weather", "argument": "Paris"}
@@ -68,6 +69,7 @@ Examples:
 "I can't hear you" -> {"intent": "volume_up", "argument": ""}
 "it's hurting my ears" -> {"intent": "volume_down", "argument": ""}
 "remind me in half an hour" -> {"intent": "set_timer", "argument": "half an hour"}
+"set a timer for forty five seconds" -> {"intent": "set_timer", "argument": "forty five seconds"}
 "what's two hundred divided by four" -> {"intent": "calculate", "argument": "two hundred divided by four"}
 "what's eleven plus nine" -> {"intent": "calculate", "argument": "eleven plus nine"}
 "set the volume to forty" -> {"intent": "set_volume", "argument": "forty"}
@@ -84,7 +86,8 @@ _CHAT_RULES = (
 
 def _chat_system() -> Message:
     now = datetime.now()
-    return Message("system", f"{_CHAT_RULES} Current date and time: {now:%A, %B %d, %Y, %H:%M}.")
+    return Message("system", f"{_CHAT_RULES} Today's date is {now:%A, %B %d, %Y}. "
+        "You can tell stories, jokes and fun facts.")
 
 
 # Words that must appear in the request before a tool intent is believed.
@@ -93,7 +96,7 @@ _VOLUME_TOPIC = (r"volume|sound|loud\w*|quiet\w*|soft\w*|hear\w*|noise|noisy|mus
                  r"|mute|raise|lower|boost")
 _EVIDENCE = {
     "set_timer": r"timer|countdown|alarm|remind\w*|wake|seconds?|minutes?|hours?",
-    "get_time": r"time|clock",
+    "get_time": r"the\s+time|time\s+(?:is\s+it|it\s+is|now)|clock|current\s+time",
     "get_date": r"date|day|today|month|year|week",
     "set_volume": _VOLUME_TOPIC + r"|level", # |\b(?:to|at)\b
     "volume_up": _VOLUME_TOPIC,

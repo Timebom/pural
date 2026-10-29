@@ -9,6 +9,7 @@ from assistant.config import ToolsSettings
 from assistant.core.dispatcher import Dispatcher
 from assistant.interfaces import STT, ToolResult
 from assistant.tools import calculator, chat, clock, fun
+from assistant.tools.reminders import ReminderService
 from assistant.tools.search import WebSearch
 from assistant.tools.timer import TimerManager
 from assistant.tools.volume import VolumeControl, get_backend
@@ -26,6 +27,8 @@ def build_dispatcher(notify: Callable[[str], None], tools_cfg: ToolsSettings | N
     d = Dispatcher()
     timers = TimerManager(on_fire=notify)
     volume = VolumeControl(get_backend())
+    reminders = ReminderService(cfg.reminders.path.expanduser(), on_fire=notify)
+    reminders.start()
     d.register("get_time", clock.get_time)
     d.register("get_date", clock.get_date)
     d.register("set_timer", timers.set_timer)
@@ -35,6 +38,9 @@ def build_dispatcher(notify: Callable[[str], None], tools_cfg: ToolsSettings | N
     d.register("volume_up", volume.volume_up)
     d.register("volume_down", volume.volume_down)
     d.register("chat_reply", chat.chat_reply)
+    d.register("set_reminder", reminders.set_reminder)
+    d.register("list_reminders", reminders.list_reminders)
+    d.register("delete_reminder", reminders.delete_reminder)
     if cfg.online:
         weather = WeatherTool(cfg.weather.default_location, cfg.weather.timeout)
         search = WebSearch(cfg.search.region, cfg.search.backend,
