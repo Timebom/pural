@@ -1,0 +1,19 @@
+vad:
+  command_silence: 0.8
+  answer_silence: 1.2
+wake:
+  phrase: hey_jarvis
+  threshold: 0.5
+stt:
+  model: base.en
+  download_root: ../models/whisper
+llm:
+  enabled: true
+  model: llama3.2
+tools:
+  online: false
+  weather:
+    default_location: Mumbai
+  search:
+    region: in-en
+    backend: duckduckgo

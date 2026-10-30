@@ -1,0 +1,23 @@
+[package]
+name = "pural"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.18.2"
+serde = { version = "1.0.229", features = ["derive"] }
+regex = "1.13.1"
+once_cell = "1.21.4"
+chrono = { version="0.4.45", features = ["clock"] }
+rand = "0.10.3"
+meval = "0.2.0"
+which = "8.0.6"
+piper-rs = "0.2.0"
+ort = "2.0.0-rc.12"
+ndarray = "0.17.2"
+clap = { version = "4.6.7", features = ["derive"] }
+env_logger = "0.11.11"
+log = "0.4.34"
+whisper-rs = "0.16.0"
+rubato = "5.0.1"
+oww-rs = "0.3.3"
