@@ -63,9 +63,9 @@ def _transcribe(clip, stt: STT) -> str:
     return text
 
 
-def listen_once(vad: SileroVAD, stt: STT, **record_opts) -> str:
+def listen_once(vad: SileroVAD, stt: STT, device: int | None = None, **record_opts) -> str:
     """Capture one utterance now. A longer silence_seconds tolerates thinking pauses."""
-    with closing(frames()) as source:
+    with closing(frames(device)) as source:
         clip = record_until_silence(vad, source, **record_opts)
     return "" if clip is None else _transcribe(clip, stt)
 
