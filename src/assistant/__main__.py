@@ -57,7 +57,7 @@ def main() -> None:
         from assistant.stt import FasterWhisperSTT
         from assistant.vad import SileroVAD
         from assistant.wakeword import WakeWordDetector
-        device = cfg.audio.input_device
+        # device = cfg.audio.input_device
         record_opts = {
             "wait_seconds":cfg.vad.wait_seconds,
             "max_seconds":cfg.vad.max_seconds,
@@ -84,7 +84,7 @@ def main() -> None:
         if args.voice:
             input("[Enter to talk]")
             print("listening...")
-            return listen_once(vad, stt, device=device,
+            return listen_once(vad, stt,
                 silence_seconds=cfg.vad.answer_silence, **record_opts)
         return input("you> ").strip() or None
 
@@ -92,7 +92,7 @@ def main() -> None:
         """Answer to a question we just asked: no wake word, more patient than a command."""
         if voice_mode:
             print("listening...")
-            return listen_once(vad, stt, device=device,
+            return listen_once(vad, stt,
                 silence_seconds=cfg.vad.answer_silence, **record_opts)
         return input("you> ").strip()
 
