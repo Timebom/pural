@@ -2,6 +2,7 @@ import argparse
 import logging
 import sys
 
+from assistant.announcer import Announcer
 from assistant.audio import SAMPLE_RATE, chime, play
 from assistant.config import ConfigError, load_settings
 from assistant.core.conversation import Conversation
@@ -14,8 +15,7 @@ from assistant.tts import PiperTTS
 def main() -> None:
     parser = argparse.ArgumentParser(prog="assistant")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--voice", action="store_true",
-        help="push-to-talk")
+    mode.add_argument("--voice", action="store_true", help="push-to-talk")
     mode.add_argument("--wake", action="store_true", help="always listening")
     parser.add_argument("--config", help="path to a YAML settings file")
     parser.add_argument("--verbose", action="store_true", help="show timing logs")
@@ -31,10 +31,20 @@ def main() -> None:
         sys.exit(f"Could not load settings: {e}")
 
     speaker = Speaker(PiperTTS(cfg.tts.path))
+    announcer = Announcer()
 
-    def notify(message: str) -> None:
+    def speak_now(message: str) -> None:
         print(f"\nassistant> {message}")
         speaker.say(message)
+
+    # Always-listening mode keeps the mic stream open, so a background thread must not
+    # play audio on its own. It posts to the announcer instead, and the main loop speaks
+    # between turns. Other modes have no open mic while idle and can speak immediately.
+    notify = announcer.post if args.wake else speak_now
+
+    def flush_announcement() -> None:
+        for message in announcer.drain():
+            speak_now(message)
 
     rules = build_default_engine()
     engine = rules
@@ -78,31 +88,50 @@ def main() -> None:
     def get_command() -> str | None:
         """Next command. '' = heard nothing (keep going), None = quit."""
         if args.wake:
-            return wake_turn(detector, vad, stt,
+            return wake_turn(
+                detector,
+                vad,
+                stt,
                 on_wake=lambda: play(chime(), SAMPLE_RATE),
-                silence_seconds=cfg.vad.command_silence, **record_opts)
+                device=device,
+                interrupt=announcer.pending,
+                silence_seconds=cfg.vad.command_silence,
+                **record_opts
+            )
         if args.voice:
             input("[Enter to talk]")
             print("listening...")
-            return listen_once(vad, stt, device=device,
-                silence_seconds=cfg.vad.answer_silence, **record_opts)
+            return listen_once(
+                vad,
+                stt,
+                device=device,
+                silence_seconds=cfg.vad.answer_silence,
+                **record_opts
+            )
         return input("you> ").strip() or None
 
     def get_answer() -> str:
         """Answer to a question we just asked: no wake word, more patient than a command."""
         if voice_mode:
             print("listening...")
-            return listen_once(vad, stt, device=device,
-                silence_seconds=cfg.vad.answer_silence, **record_opts)
+            return listen_once(
+                vad,
+                stt,
+                device=device,
+                silence_seconds=cfg.vad.answer_silence,
+                **record_opts
+            )
         return input("you> ").strip()
 
     while True:
         try:
+            flush_announcement()
             text = get_command()
             if text is None:
                 break
             if not text:
-                print("(heard nothing)")
+                if not announcer.pending(): # interrupted by an announcement: stay quiet
+                    print("(heard nothing)")
                 continue
             if voice_mode:
                 print("you>", text)

@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 import numpy as np
 from openwakeword.model import Model
@@ -44,9 +44,16 @@ class WakeWordDetector:
         self._model.reset()
 
 
-def wait_for_wakeword(detector: WakeWordDetector, source: Iterable[np.ndarray]) -> bool:
-    """Consume frames until the wake phrase is heard. False if the stream ended."""
+def wait_for_wakeword(
+    detector: WakeWordDetector,
+    source: Iterable[np.ndarray],
+    interrupt: Callable[[], bool] | None = None
+) -> bool:
+    """Consume frames until the wake phrase is heard.
+    False if interrupt() turned true first, or the stream ended."""
     for frame in source:
+        if interrupt is not None and interrupt():
+            return False
         if detector.detect(frame):
             return True
     return False

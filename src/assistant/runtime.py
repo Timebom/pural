@@ -76,15 +76,17 @@ def wake_turn(
     stt: STT,
     on_wake: Callable[[], None],
     device: int | None = None,
+    interrupt: Callable[[], bool] | None = None,
     **record_opts
 ) -> str:
-    """Block until the wake phrase, then capture one command on the same mic stream."""
+    """Block until the wake phrase (or until interrupt() turns true), then capture one
+    command on the same mic stream. Returns '' if interrupted or nobody spoke."""
     detector.reset()
     with closing(frames(device)) as source:
-        if not wait_for_wakeword(detector, source):
+        if not wait_for_wakeword(detector, source, interrupt):
             return ""
         on_wake()
-        for _ in islice(source, SETTLE_FRAMES):
+        for _ in islice(source, SETTLE_FRAMES): # drop chime echo + tail of the wake word
             pass
         clip = record_until_silence(vad, source, **record_opts)
     return "" if clip is None else _transcribe(clip, stt)
