@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 
-from assistant.announcer import Announcer
+from assistant.announcer import Announcer, AudioGate
 from assistant.audio import SAMPLE_RATE, chime, play
 from assistant.config import ConfigError, load_settings
 from assistant.core.conversation import Conversation
@@ -40,7 +40,8 @@ def main() -> None:
     # Always-listening mode keeps the mic stream open, so a background thread must not
     # play audio on its own. It posts to the announcer instead, and the main loop speaks
     # between turns. Other modes have no open mic while idle and can speak immediately.
-    notify = announcer.post if args.wake else speak_now
+    gate = AudioGate(speak_now, announcer)
+    notify = gate.deliver
 
     def flush_announcement() -> None:
         for message in announcer.drain():
@@ -151,6 +152,9 @@ def main() -> None:
                 reply = conversation.respond(answer)
         except (EOFError, KeyboardInterrupt):
             break
+
+    for message in announcer.drain(): # quit with something still waiting: show it
+        print(f"(not spoken) {message}")
 
 
 if __name__ == "__main__":

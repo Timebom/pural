@@ -1,3 +1,4 @@
+import logging
 import queue
 import wave
 from collections.abc import Iterator
@@ -8,6 +9,8 @@ import sounddevice as sd
 SAMPLE_RATE = 16_000
 CHANNELS = 1
 FRAME_SAMPLES = 1280
+
+log = logging.getLogger(__name__)
 
 
 def list_devices() -> list[dict]:
@@ -31,7 +34,9 @@ def list_devices() -> list[dict]:
 def play(samples: np.ndarray, rate: int) -> None:
     """Play float32 mono audio and block until it finishes."""
     sd.play(samples, rate)
-    sd.wait()
+    status = sd.wait()
+    if status:
+        log.warning("playback glitch: %s", status)
 
 
 def record(seconds: float, device: int | None = None) -> np.ndarray:
