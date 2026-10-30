@@ -32,9 +32,15 @@ def list_devices() -> list[dict]:
 
 
 def play(samples: np.ndarray, rate: int) -> None:
-    """Play float32 mono audio and block until it finishes."""
-    sd.play(samples, rate)
-    sd.wait()
+    """Play float32 mono audio and block until it finishes.
+
+    Uses a blocking stream write: PortAudio plays the whole array in native code, so no
+    Python runs in the audio path and other threads can't cause glitches."""
+    data = np.ascontiguousarray(samples, dtype=np.float32).reshape(-1, 1)
+    with sd.OutputStream(samplerate=rate, channels=CHANNELS, dtype="float32") as stream:
+        underflowed = stream.write(data)
+    if underflowed:
+        log.warning("playback underflow")
 
 
 def record(seconds: float, device: int | None = None) -> np.ndarray:
