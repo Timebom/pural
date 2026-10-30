@@ -153,9 +153,6 @@ def main() -> None:
         except (EOFError, KeyboardInterrupt):
             break
 
-    for message in announcer.drain(): # quit with something still waiting: show it
-        print(f"(not spoken) {message}")
-
 
 if __name__ == "__main__":
     main()
