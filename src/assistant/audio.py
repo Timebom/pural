@@ -31,26 +31,10 @@ def list_devices() -> list[dict]:
     return devices
 
 
-# def play(samples: np.ndarray, rate: int) -> None:
-#     """Play float32 mono audio and block until it finishes."""
-#     sd.play(samples, rate)
-#     status = sd.wait()
-#     if status:
-#         log.warning("playback glitch: %s", status)
 def play(samples: np.ndarray, rate: int) -> None:
     """Play float32 mono audio and block until it finishes."""
-    # Prefer the device’s native rate when possible; otherwise let PortAudio resample.
-    with sd.OutputStream(
-        samplerate=rate,
-        channels=1,
-        dtype="float32",
-        # optional: latency="high" or a larger blocksize if you still see rare glitches
-    ) as stream:
-        # ensure C-contiguous float32 mono
-        data = np.ascontiguousarray(samples.reshape(-1, 1), dtype=np.float32)
-        underflowed = stream.write(data)
-        if underflowed:
-            log.warning("playback underflow")
+    sd.play(samples, rate)
+    sd.wait()
 
 
 def record(seconds: float, device: int | None = None) -> np.ndarray:
