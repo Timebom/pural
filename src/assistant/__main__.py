@@ -84,7 +84,7 @@ def main() -> None:
         if args.voice:
             input("[Enter to talk]")
             print("listening...")
-            return listen_once(vad, stt,
+            return listen_once(vad, stt, device=device,
                 silence_seconds=cfg.vad.answer_silence, **record_opts)
         return input("you> ").strip() or None
 
@@ -92,7 +92,7 @@ def main() -> None:
         """Answer to a question we just asked: no wake word, more patient than a command."""
         if voice_mode:
             print("listening...")
-            return listen_once(vad, stt,
+            return listen_once(vad, stt, device=device,
                 silence_seconds=cfg.vad.answer_silence, **record_opts)
         return input("you> ").strip()
 
