@@ -250,7 +250,7 @@ pub struct LLMSettings {
 
     /// 0 = repeatable routing
     #[serde(default)]
-    pub temperature: f64,
+    pub temperature: f32,
 
     #[serde(default = "default_150")]
     pub max_tokens: u32,
@@ -259,7 +259,7 @@ pub struct LLMSettings {
     pub keep_alive: String,
 
     #[serde(default = "default_60_0")]
-    pub timeout: f64,
+    pub timeout: u64,
 
     #[serde(default = "default_4")]
     pub history_turns: u32,
@@ -277,8 +277,8 @@ fn default_150() -> u32 {
 fn default_keep_alive() -> String {
     "30m".into()
 }
-fn default_60_0() -> f64 {
-    60.0
+fn default_60_0() -> u64 {
+    60
 }
 
 impl Default for LLMSettings {
@@ -305,7 +305,7 @@ impl LLMSettings {
         if self.max_tokens == 0 {
             return Err("llm.max_tokens must be > 0".into());
         }
-        if self.timeout <= 0.0 {
+        if self.timeout <= 0 {
             return Err("llm.timeout must be > 0".into());
         }
         Ok(())

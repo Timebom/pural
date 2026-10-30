@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use ddgs::{Ddgs, TextOptions, TextBackend};
 use regex::Regex;
 use url::Url;
 
@@ -33,7 +34,6 @@ fn speakable(snippet: &str, limit: usize, max_sentences: usize) -> String {
     text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     text = trailing_dots().replace(&text, "").into_owned();
 
-    // Keep only the first N sentences
     let sentences: Vec<&str> = sentence_end().split(&text).collect();
     text = sentences
         .into_iter()
@@ -45,7 +45,7 @@ fn speakable(snippet: &str, limit: usize, max_sentences: usize) -> String {
         if let Some(idx) = text[..limit].rfind(' ') {
             text = text[..idx].to_string();
         } else {
-            text = text[..limit].to_string();
+            text.truncate(limit);
         }
     }
 
@@ -53,67 +53,56 @@ fn speakable(snippet: &str, limit: usize, max_sentences: usize) -> String {
         .to_string()
 }
 
-#[derive(Debug)]
-pub struct SearchError(String);
-
-impl std::fmt::Display for SearchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::error::Error for SearchError {}
-
-#[derive(Debug, Clone)]
-pub struct SearchResult {
-    pub title: String,
-    pub url: String,
-    pub snippet: String,
-}
-
-pub type SearchFn = Box<dyn Fn(&str) -> Result<Vec<SearchResult>, SearchError> + Send + Sync>;
-
 pub struct WebSearch {
     region: String,
     backend: String,
     max_results: usize,
-    timeout: u64,
-    search_fn: SearchFn,
+    // ddgs client is created per-call (cheap) or you can cache it
 }
 
 impl WebSearch {
-    pub fn new(
-        region: &str,
-        backend: &str,
-        max_results: usize,
-        timeout: u64,
-        search_fn: Option<SearchFn>,
-    ) -> Self {
-        let search_fn = search_fn.unwrap_or_else(|| {
-            // Default: placeholder that explains the missing dependency.
-            // Replace this with a real implementation (see note below).
-            Box::new(|_query: &str| {
-                Err(SearchError(
-                    "Web search backend is not configured.".to_string(),
-                ))
-            })
-        });
-
+    pub fn new(region: &str, backend: &str, max_results: usize, _timeout: u64) -> Self {
         Self {
             region: region.to_string(),
             backend: backend.to_string(),
             max_results,
-            timeout,
-            search_fn,
         }
     }
 
-    /// Convenience constructor with defaults matching the Python version.
     pub fn with_defaults() -> Self {
-        Self::new("us-en", "auto", 5, 8, None)
+        Self::new("us-en", "auto", 5, 8)
     }
 
-    pub fn web_search(&self, slots: &HashMap<String, String>) -> ToolResult {
+    async fn search(&self, query: &str) -> Result<Vec<ddgs::TextResult>, String> {
+        let ddgs = Ddgs::new().map_err(|e| e.to_string())?;
+
+        let backend = match self.backend.as_str() {
+            "auto" => TextBackend::Auto,
+            "yahoo" => TextBackend::Yahoo,
+            "brave" => TextBackend::Brave,
+            "google" => TextBackend::Google,
+            "html" | "lite" | "api" => TextBackend::Auto, // fallback
+            _ => TextBackend::Auto,
+        };
+
+        let opts = TextOptions::default()
+            .max_results(self.max_results)
+            .backend(backend);
+            // .region(...) if the crate exposes it in your version
+
+        ddgs.text_with_options(query, opts)
+            .await
+            .map_err(|e| {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("no results") {
+                    String::new() // treat as empty results
+                } else {
+                    "I couldn't search the web right now.".to_string()
+                }
+            })
+    }
+
+    pub async fn web_search(&self, slots: &HashMap<String, String>) -> ToolResult {
         let query = slots
             .get("query")
             .map(|s| s.trim().to_string())
@@ -124,28 +113,30 @@ impl WebSearch {
                 .with_follow_up(FollowUp::new("web_search", "query"));
         }
 
-        let raw = match (self.search_fn)(&query) {
+        let raw = match self.search(&query).await {
             Ok(r) => r,
-            Err(e) => return ToolResult::err(e.to_string()),
+            Err(e) if e.is_empty() => Vec::new(),
+            Err(e) => return ToolResult::err(e),
         };
 
         if raw.is_empty() {
             return ToolResult::err(format!("I didn't find anything for {query}."));
         }
 
-        // Prefer a result that has a speakable snippet
-        let best = raw.iter().find(|r| !speakable(&r.snippet, 280, 1).is_empty());
+        // Prefer a result that has a usable snippet
+        let best = raw.iter().find(|r| {
+            let body = r.body.as_deref().unwrap_or("");
+            !speakable(body, 280, 1).is_empty()
+        });
 
         let Some(best) = best else {
-            // Fall back to just the title of the first result
             let mut data = HashMap::new();
-            // Store a simple summary; richer serialisation can be added later
             data.insert("count".to_string(), raw.len().to_string());
             return ToolResult::ok(format!("The top result is {}.", raw[0].title))
                 .with_data(data);
         };
 
-        let domain = Url::parse(&best.url)
+        let domain = Url::parse(&best.href)
             .ok()
             .and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string()))
             .unwrap_or_default();
@@ -156,9 +147,10 @@ impl WebSearch {
             format!("According to {domain}: ")
         };
 
+        let snippet = best.body.as_deref().unwrap_or("");
         let mut data = HashMap::new();
         data.insert("count".to_string(), raw.len().to_string());
 
-        ToolResult::ok(intro + &speakable(&best.snippet, 280, 1)).with_data(data)
+        ToolResult::ok(intro + &speakable(snippet, 280, 1)).with_data(data)
     }
 }
