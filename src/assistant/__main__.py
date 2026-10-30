@@ -57,7 +57,7 @@ def main() -> None:
         from assistant.stt import FasterWhisperSTT
         from assistant.vad import SileroVAD
         from assistant.wakeword import WakeWordDetector
-        # device = cfg.audio.input_device
+        device = cfg.audio.input_device
         record_opts = {
             "wait_seconds":cfg.vad.wait_seconds,
             "max_seconds":cfg.vad.max_seconds,
