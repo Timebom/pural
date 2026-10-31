@@ -17,7 +17,7 @@ class AudioSettings(_Section):
     input_device: int | None = None # None = system default mic
 
 class VADSettings(_Section):
-    path: Path = Path("../models/vad/silero_vad.onnx")
+    path: Path = Path("models/vad/silero_vad.onnx")
     threshold: float = Field(0.5, ge=0, le=1)
     command_silence: float = Field(0.8, gt=0) # quiet that ends a command
     answer_silence: float = Field(1.2, gt=0) # quiet that ends a answer
@@ -34,13 +34,13 @@ class WakeSettings(_Section):
 
 class STTSettings(_Section):
     model: str = "base.en"
-    download_root: Path = Path("../models/whisper")
+    download_root: Path = Path("models/whisper")
     device: str = "cpu"
     compute_type: str = "int8"
 
 
 class TTSSettings(_Section):
-    path: Path = Path("../models/tts/en_GB-alba-medium.onnx")
+    path: Path = Path("models/tts/en_GB-alba-medium.onnx")
 
 
 class LLMSettings(_Section):
@@ -91,9 +91,9 @@ class Settings(_Section):
 def load_settings(path: str | Path | None = None) -> Settings:
     """Defaults, overridden by a YAML file. With no path, uses ./config.yaml if it exists."""
     if path is None:
-        if not Path("config.yaml").exists():
+        path = Path.home() / ".assistant" / "config.yaml"
+        if not path.exists():
             return Settings()
-        path = "config.yaml"
     file = Path(path)
     if not file.exists():
         raise ConfigError(f"settings file not found: {file}")

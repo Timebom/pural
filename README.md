@@ -39,10 +39,18 @@ python -m assistant --voice          # push-to-talk
 python -m assistant --wake           # wake-word mode
 python -m assistant --verbose        # timing logs
 
+# Run from UV
+uv run assistant                # text mode
+uv run assistant --voice        # push-to-talk
+uv run assistant --wake           # wake-word mode
+uv run assistant --verbose        # timing logs
+
 # Optional Config
 python -m assistant --config path/to/config.yaml
 ```
-See src/config.yaml for defaults (wake phrase, VAD thresholds, LLM model, tool settings, etc.).
+See `src/config.yaml` for defaults (wake phrase, VAD thresholds, LLM model, tool settings, etc.).
+Default location of `config.yaml` is now `~/.assistant/config.yaml`.
+The provided file is a reference showing how the `config.yaml` should look.
 
 ## Architecture
 ```Mic → VAD → Wake Word (optional) → Record → STT → Rules / LLM → Tools → TTS → Speaker```

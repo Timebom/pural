@@ -29,3 +29,9 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra -m 'not live'"
 markers = ["live: needs a running Ollama server and a pulled model (run with: pytest -m live)"]
+
+[project.scripts]
+assistant = "assistant.__main__:main"
+
+[tool.uv]
+package = true

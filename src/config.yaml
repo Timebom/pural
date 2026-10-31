@@ -6,7 +6,7 @@ wake:
   threshold: 0.5
 stt:
   model: base.en
-  download_root: ../models/whisper
+  download_root: models/whisper
 llm:
   enabled: true
   model: llama3.2
