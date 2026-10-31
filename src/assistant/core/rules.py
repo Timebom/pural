@@ -15,10 +15,29 @@ def build_default_engine() -> RuleEngine:
     e.add("set_reminder", r"\bremind me\s+(?:to\s+|about\s+|that\s+)?(?P<text>.+)")
     e.add("set_reminder", r"\b(?:set|add|create|make)\s+(?:a\s+|an\s+)?reminder\b|\bremind me\b")
 
+    # System status: battery, cpu, memory, disk, or a general check.
+    e.add("system_status", r"\b(?P<what>battery)\b")
+    e.add("system_status", r"\b(?P<what>cpu|processor)\b")
+    e.add("system_status", r"\b(?P<what>memory|ram|disk|storage)\s+(?:usage|space)\b")
+    e.add("system_status", r"\bhow much\s+(?:free\s+)?(?P<what>memory|ram|disk|storage)\b")
+    e.add("system_status", r"\b(?:my|computer'?s?|system)\s+(?P<what>memory|ram|disk|storage)\b")
+    e.add("system_status", r"\b(?:system|computer|laptop)\s+(?:status|stats|health)\b|\bhow(?:'s| is) (?:my|the) (?:computer|laptop|mac|system|machine)\b")
+
     # Web search: explicit commands only.
     e.add("web_search",
         r"\b(?:search|look up|google)\s+(?:(?:the\s+)?(?:web|internet|online)\s+)?(?:for\s+)?(?P<query>.+)")
     e.add("web_search", r"\b(?:search|look up|google)\b")        # no query -> asks for one
+
+    # Alarms. Order matters: cancel, then list, then set.
+    e.add("cancel_alarm", r"\b(?:cancel|delete|remove|clear)\s+(?P<which>all)\b.*\balarms?\b")
+    e.add("cancel_alarm", r"\b(?:cancel|delete|remove|clear)\s+(?:my\s+|the\s+)?alarms?\s+(?:for|at)\s+(?P<which>.+)")
+    e.add("cancel_alarm", r"\b(?:cancel|delete|remove|clear)\s+(?:my\s+|the\s+)?(?:(?P<which>.+?)\s+)?alarms?\b")
+    e.add("list_alarms", r"\balarms\b|\balarm\s+(?:is\s+)?set\b")
+    e.add("set_alarm", r"\b(?:set|add|create|make)\s+(?:an?\s+)?alarm\s+(?:for\s+|at\s+)?(?P<when>.+)")
+    e.add("set_alarm", r"\b(?:set|add|create|make)\s+(?:an?\s+)?alarm\b")
+    e.add("set_alarm", r"\balarm\s+(?:for|at)\s+(?P<when>.+)")
+    e.add("set_alarm", r"\bwake me(?: up)?\s+(?P<when>(?!up\b).+)")
+    e.add("set_alarm", r"\bwake me\b")
 
     # Weather: with a place, then with only a day, then bare.
     e.add("get_weather", r"\b(?:weather|forecast)\b.*?\b(?:in|at|for)\s+(?P<location>.+)")
