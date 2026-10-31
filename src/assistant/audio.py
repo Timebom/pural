@@ -36,7 +36,14 @@ def play(samples: np.ndarray, rate: int) -> None:
 
     Uses a blocking stream write: PortAudio plays the whole array in native code, so no
     Python runs in the audio path and other threads can't cause glitches."""
-    data = np.ascontiguousarray(samples, dtype=np.float32).reshape(-1, 1)
+    data = np.ascontiguousarray(samples, dtype=np.float32).copy()
+    ramp = min(len(data) // 2, int(rate * 0.01))             # 10 ms fade in and out
+    if ramp:
+        fade = np.linspace(0.0, 1.0, ramp, dtype=np.float32)
+        data[:ramp] *= fade
+        data[-ramp:] *= fade[::-1]
+    pad = np.zeros(int(rate * 0.05), dtype=np.float32)       # 50 ms of silence each side
+    data = np.concatenate([pad, data, pad]).reshape(-1, 1)
     with sd.OutputStream(samplerate=rate, channels=CHANNELS, dtype="float32") as stream:
         underflowed = stream.write(data)
     if underflowed:

@@ -5,11 +5,6 @@ def build_default_engine() -> RuleEngine:
     """The M1 rules. Order = priority: specific first, general later."""
     e = RuleEngine()
 
-    # Web search: explicit commands only.
-    e.add("web_search",
-        r"\b(?:search|look up|google)\s+(?:(?:the\s+)?(?:web|internet|online)\s+)?(?:for\s+)?(?P<query>.+)")
-    e.add("web_search", r"\b(?:search|look up|google)\b")        # no query -> asks for one
-
     # Reminders.
     e.add("delete_reminder", r"\b(?:delete|cancel|remove|clear)\s+(?P<task>all|every)\b.*\breminders?\b")
     e.add("delete_reminder", r"\b(?:delete|cancel|remove)\s+(?:my\s+|the\s+)?reminder\s+(?:about\s+|to\s+|for\s+)?(?P<task>.+)")
@@ -19,6 +14,11 @@ def build_default_engine() -> RuleEngine:
     e.add("set_reminder", r"\b(?:set|add|create|make)\s+(?:a\s+|an\s+)?reminder\s+(?:to\s+|about\s+|for\s+|that\s+)?(?P<text>.+)")
     e.add("set_reminder", r"\bremind me\s+(?:to\s+|about\s+|that\s+)?(?P<text>.+)")
     e.add("set_reminder", r"\b(?:set|add|create|make)\s+(?:a\s+|an\s+)?reminder\b|\bremind me\b")
+
+    # Web search: explicit commands only.
+    e.add("web_search",
+        r"\b(?:search|look up|google)\s+(?:(?:the\s+)?(?:web|internet|online)\s+)?(?:for\s+)?(?P<query>.+)")
+    e.add("web_search", r"\b(?:search|look up|google)\b")        # no query -> asks for one
 
     # Weather: with a place, then with only a day, then bare.
     e.add("get_weather", r"\b(?:weather|forecast)\b.*?\b(?:in|at|for)\s+(?P<location>.+)")

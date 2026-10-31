@@ -102,25 +102,31 @@ def parse_duration(text: str) -> int | None:
     total = 0.0
     number: float | None = None
     found_unit = False
+    last_unit = 0 # seconds in the most recent unit word
 
     for i, tok in enumerate(tokens):
         if tok in _SECONDS_PER:
-            total += (1.0 if number is None else number) * _SECONDS_PER[tok]
+            last_unit = _SECONDS_PER[tok]
+            total += (1.0 if number is None else number) * last_unit
             number = None
             found_unit = True
         elif tok == "half":
-            number = (number or 0.0) + 0.5
+            number = (number or 0.0) + 0.5 # "half an hour", "two and half hours"
         elif tok in ("a", "an"):
-            # "an hour" -> 1. But before "half", stay out of the way:
-            # the "half" branch adds the 0.5 itself.
+            # "an hour" -> 1. Before "half", stay out of the way: "half" adds the 0.5 itself.
             if number is None and tokens[i + 1:i + 2] != ["half"]:
                 number = 1.0
         else:
             value = _as_number(tok)
             if value is None:
-                continue
+                continue                            # ignore filler: "and", "for", ...
             is_tens_then_unit = (
-                number is not None and number >= 20 and number % 10 == 0 and tok in _UNITS and value < 10
+                number is not None and number >= 20 and number % 10 == 0
+                and tok in _UNITS and value < 10
             )
-            number = number + value if is_tens_then_unit and (number is not None) else value
+            number = number + value if is_tens_then_unit and number is not None else value  # "twenty five"
+
+    if number == 0.5 and last_unit:                 # "an hour and a half": half of the last unit
+        total += 0.5 * last_unit
+
     return round(total) if found_unit and total > 0 else None

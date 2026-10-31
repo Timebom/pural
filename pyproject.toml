@@ -16,4 +16,16 @@ dependencies = [
     "ollama>=0.6.3",
     "ddgs>=9.16.1",
     "httpx>=0.28.1",
+    "psutil>=7.2.2",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra -m 'not live'"
+markers = ["live: needs a running Ollama server and a pulled model (run with: pytest -m live)"]
