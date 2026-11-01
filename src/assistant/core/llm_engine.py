@@ -24,6 +24,10 @@ INTENT_SLOTS: dict[str, str | None] = {
     "tell_joke": None,
     "get_weather": "location",
     "web_search": "query",
+    "set_alarm": "when",
+    "list_alarms": None,
+    "cancel_alarm": "which",
+    "system_status": "what",
 }
 CHAT = "chat"
 
@@ -39,7 +43,11 @@ ROUTE_SCHEMA = {
 ROUTER = Message("system", """You route requests for a voice assistant. Reply with JSON: an intent and an argument.
 
 Intents:
-- set_timer: start a countdown, or wake/remind me after some time. argument = the duration, e.g. "5 minutes".
+- set_timer: start a countdown for a DURATION, or remind me after some time. argument = the duration, e.g. "5 minutes".
+- set_alarm: set an alarm or wake-up call for a CLOCK TIME. argument = the time, plus any repeat, e.g. "7 am" or "6:30 every weekday".
+- list_alarms: the user asks which alarms are set.
+- cancel_alarm: cancel, delete or turn off an alarm. argument = which one, e.g. "7 am" or "all"; empty if not said.
+- system_status: the user asks about THIS computer's battery, cpu, memory or disk. argument = battery, cpu, memory or disk; empty for a general check.
 - get_time: the user asks what time it is.
 - get_date: the user asks for today's date, the day of the week, or the year.
 - set_volume: set the volume to a specific level. argument = the level, e.g. "40".
@@ -55,6 +63,7 @@ Rules:
 - A question about facts, people, places, science, trivia or advice is ALWAYS chat, even if it starts with "what's the".
 - The argument is a short phrase copied from the request, or empty. For chat it is ALWAYS empty.
 - For set_timer the argument must include the unit: seconds, minutes or hours.
+- The battery, storage or memory of any other thing (a phone, a game console, the human brain) is a chat question.
 
 Examples:
 "what's the weather in Paris" -> {"intent": "get_weather", "argument": "Paris"}
@@ -74,6 +83,14 @@ Examples:
 "what's eleven plus nine" -> {"intent": "calculate", "argument": "eleven plus nine"}
 "set the volume to forty" -> {"intent": "set_volume", "argument": "forty"}
 "put the volume at forty five" -> {"intent": "set_volume", "argument": "forty five"}
+"wake me up at seven in the morning" -> {"intent": "set_alarm", "argument": "7 am"}
+"set an alarm for six thirty every weekday" -> {"intent": "set_alarm", "argument": "6:30 every weekday"}
+"what alarms do I have" -> {"intent": "list_alarms", "argument": ""}
+"turn off my 7 am alarm" -> {"intent": "cancel_alarm", "argument": "7 am"}
+"how much battery do I have left" -> {"intent": "system_status", "argument": "battery"}
+"is my computer running slow" -> {"intent": "system_status", "argument": "cpu"}
+"how much storage does the iPhone 17 have" -> {"intent": "chat", "argument": ""}
+"what's my phone battery at" -> {"intent": "chat", "argument": ""}
 """
 )
 
@@ -81,6 +98,7 @@ _CHAT_RULES = (
     "You are a friendly voice assistant. Answer in one or two short sentences, "
     "in plain spoken language with no lists, markdown or emoji. You cannot check "
     "live information such as weather or news; say so briefly if asked."
+    "You cannot perform actions yourself, so never claim to have done something."
 )
 
 
@@ -105,6 +123,10 @@ _EVIDENCE = {
     "tell_joke": r"jok\w*|laugh\w*|funny|puns?|humou?r",
     "get_weather": r"weather|forecast|rain\w*|snow\w*|temperature|sunny|cloudy|windy|umbrella|humid\w*|hot|cold",
     "web_search": r"search\w*|google|look|find|web|internet|online",
+    "set_alarm": r"alarm\w*|wake|get me up|ring me",
+    "list_alarms": r"alarm\w*",
+    "cancel_alarm": r"alarm\w*",
+    "system_status": r"battery|cpu|processor|memory|ram|disk|drive|storage|space|computer|laptop|mac|system|charg\w*|slow|full",
 }
 _EVIDENCE = {k: re.compile(rf"\b(?:{v})\b") for k, v in _EVIDENCE.items()}
 

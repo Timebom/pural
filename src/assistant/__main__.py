@@ -140,6 +140,8 @@ def main() -> None:
             while True:
                 print("assistant>", reply.text)
                 speaker.say(reply.text)
+                if reply.after is not None: # an action that must happen AFTER the words
+                    reply.after()
                 if not reply.awaiting_answer:
                     break
                 answer = get_answer()

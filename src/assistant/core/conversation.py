@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from assistant.core.dispatcher import Dispatcher
 from assistant.core.intents import normalize
@@ -12,6 +13,7 @@ MAX_RETRIES = 2 # how many failed answers before we give up
 class Reply:
     text: str
     awaiting_answer: bool = False # True: caller should listen again, no wake word
+    after: Callable[[], None] | None = field(default=None, compare=False, repr=False)
 
 
 class Conversation:
@@ -61,7 +63,7 @@ class Conversation:
         result = self._dispatcher.run(intent)
         if result.follow_up is None:
             self.cancel()
-            return Reply(result.message)
+            return Reply(result.message, after=result.after)
         self._retries = self._retries + 1 if is_retry else 0
         if self._retries >= MAX_RETRIES:
             self.cancel()

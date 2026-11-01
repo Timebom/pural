@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -27,6 +28,7 @@ class ToolResult:
     message: str
     data: dict = field(default_factory=dict)
     follow_up: FollowUp | None = None
+    after: Callable[[], None] | None = field(default=None, compare=False, repr=False) # runs after the message has been spoken (shutdown must not happen before "Shutting down").
 
 
 class STT(Protocol):

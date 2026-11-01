@@ -71,11 +71,17 @@ class RemindersSettings(_Section):
     path: Path = Path.home() / ".assistant" / "reminders.json"
 
 
+class PowerSettings(_Section):
+    enabled: bool = True
+    dry_run: bool = False # speak the whole conversation, but never touch the computer
+
+
 class ToolsSettings(_Section):
     online: bool = True                 # weather and web search contact third-party servers
     weather: WeatherSettings = Field(default_factory=WeatherSettings)
     search: SearchSettings = Field(default_factory=SearchSettings)
     reminders: RemindersSettings = Field(default_factory=RemindersSettings)
+    power: PowerSettings = Field(default_factory=PowerSettings)
 
 
 class Settings(_Section):

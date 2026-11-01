@@ -15,6 +15,10 @@ _CLOCK = re.compile(
     r"^(?:(?P<noon>noon|midday)|(?P<midnight>midnight)"
     r"|(?P<h>\d{1,2})(?:[: ](?P<m>\d{2}))?\s*(?P<ap>a ?m|p ?m)?)$")
 MAX_AHEAD = timedelta(days=365)
+_DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+EVERY_DAY = tuple(range(7))
+WEEKDAYS = (0, 1, 2, 3, 4)
+WEEKENDS = (5, 6)
 
 
 def _relative(tokens: list[str], now: datetime) -> datetime | None:
@@ -96,3 +100,74 @@ def split_reminder(text: str, now: datetime | None = None) -> tuple[str, str]:
                 task.pop()
             return " ".join(task), " ".join(tokens[i:])
     return " ".join(tokens), ""
+
+
+def _days_named(word: str, every: bool) -> tuple[int, ...] | None:
+    """What a word means as a repeat. `every` says whether 'every'/'each' came just before it."""
+    plural = word.endswith("s")
+    singular = word[:-1] if plural else word
+    if word in ("daily", "everyday"):
+        return EVERY_DAY
+    if word == "day" and every:
+        return EVERY_DAY
+    if singular == "weekday" and (every or plural):
+        return WEEKDAYS
+    if singular == "weekend" and (every or plural):
+        return WEEKENDS
+    if singular in _DAY_NAMES and (every or plural):
+        return (_DAY_NAMES.index(singular),)
+    return None
+
+
+def split_repeat(text: str) -> tuple[tuple[int, ...], str]:
+    """'7 am every weekday' -> ((0, 1, 2, 3, 4), '7 am'). () when there is no repeat phrase.
+    One named day without 'every' ('on monday') is not a repeat."""
+    tokens = normalize(text).split()
+    days: set[int] = set()
+    kept: list[str] = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        every = tok in ("every", "each") and i + 1 < len(tokens)
+        found = _days_named(tokens[i + 1] if every else tok, every)
+        if tok == "on" and i + 1 < len(tokens) and _days_named(tokens[i + 1], False):
+            i += 1                                   # "on mondays": drop the "on" too
+            continue
+        if found is None:
+            kept.append(tok)
+            i += 1
+            continue
+        days.update(found)
+        i += 2 if every else 1
+        while i < len(tokens):                       # "every monday and thursday"
+            nxt = i + 1 if tokens[i] == "and" and i + 1 < len(tokens) else i
+            more = _days_named(tokens[nxt], True)
+            if more is None:
+                break
+            days.update(more)
+            i = nxt + 1
+    return tuple(sorted(days)), " ".join(kept)
+
+
+def repeat_phrase(days: tuple[int, ...]) -> str:
+    """(0, 1, 2, 3, 4) -> 'every weekday'. split_repeat reads this back unchanged."""
+    days = tuple(sorted(set(days)))
+    if days == EVERY_DAY:
+        return "every day"
+    if days == WEEKDAYS:
+        return "every weekday"
+    if days == WEEKENDS:
+        return "every weekend"
+    names = [_DAY_NAMES[d].capitalize() for d in days]
+    if len(names) == 1:
+        return f"every {names[0]}"
+    return "every " + ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def next_on_days(hour: int, minute: int, days: tuple[int, ...], after: datetime) -> datetime:
+    """The first time at hour:minute, on one of `days` (0 = Monday), that is later than `after`."""
+    for offset in range(8):
+        candidate = datetime.combine(after.date() + timedelta(days=offset), time(hour, minute))
+        if candidate > after and candidate.weekday() in days:
+            return candidate
+    raise ValueError("no matching day")              # unreachable when days is not empty

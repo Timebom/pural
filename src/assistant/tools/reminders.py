@@ -6,22 +6,28 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from assistant.core.intents import normalize
-from assistant.core.timeparse import parse_when, split_reminder
+from assistant.core.timeparse import (
+    next_on_days,
+    parse_when,
+    repeat_phrase,
+    split_reminder,
+    split_repeat,
+)
 from assistant.interfaces import FollowUp, ToolResult
 
 log = logging.getLogger(__name__)
 
-_FIELDS = {"id", "task", "due", "status"}          # "kind" is optional: older files have none
+_FIELDS = {"id", "task", "due", "status"} # "kind" and "repeat" are optional
 _PRONOUNS = {"my": "your", "me": "you", "i": "you", "mine": "yours", "myself": "yourself",
              "i'm": "you're", "i'll": "you'll", "i've": "you've", "i'd": "you'd"}
 _FILLER = {"the", "my", "a", "an", "that", "about", "to", "reminder", "reminders"}
 _ALL = {"all", "every", "everything"}
-MISSED_AFTER = 120      # seconds late before a reminder or alarm counts as "missed"
-MAX_BATCH = 5           # items announced per check; the rest wait for the next tick
+MISSED_AFTER = 120 # seconds late before a reminder or alarm counts as "missed"
+MAX_BATCH = 5 # items announced per check; the rest wait for the next tick
 
 
 def to_second_person(text: str) -> str:
@@ -53,6 +59,20 @@ def _kind(item: dict) -> str:
     return item.get("kind", "reminder")
 
 
+def _repeat_of(item: dict) -> tuple[int, ...]:
+    days = item.get("repeat") or ()
+    if not isinstance(days, (list, tuple)):
+        return ()
+    return tuple(sorted({d for d in days if isinstance(d, int) and 0 <= d <= 6}))
+
+
+def describe_alarm(item: dict, now: datetime) -> str:
+    """'7 AM every weekday' for a repeating alarm, 'tomorrow at 7 AM' for a one-off."""
+    due = datetime.fromtimestamp(item["due"])
+    days = _repeat_of(item)
+    return f"{clock_text(due)} {repeat_phrase(days)}" if days else describe_time(due, now)
+
+
 def _matches(query: str, task: str) -> bool:
     """Every query word must (nearly) match a word in the task: 'dentest' finds 'dentist'."""
     task = task.lower()
@@ -73,8 +93,7 @@ def _same_clock(item: dict, target: datetime) -> bool:
 
 
 def _alarm_times(alarms: list[dict], now: datetime) -> str:
-    return ", and ".join(describe_time(datetime.fromtimestamp(r["due"]), now)
-                         for r in alarms[:5])
+    return ", and ".join(describe_alarm(r, now) for r in alarms[:5])
 
 
 class ReminderService:
@@ -120,9 +139,12 @@ class ReminderService:
                        if r["status"] == "pending" and _kind(r) == kind),
                       key=lambda r: r["due"])
 
-    def _store(self, task: str, due: datetime, kind: str) -> dict | None:
+    def _store(self, task: str, due: datetime, kind: str,
+               repeat: tuple[int, ...] = ()) -> dict | None:
         entry = {"id": uuid.uuid4().hex[:8], "task": task, "due": due.timestamp(),
                  "status": "pending", "kind": kind, "created": time.time()}
+        if repeat:
+            entry["repeat"] = list(repeat)
         try:
             with self._lock:
                 self._items.append(entry)
@@ -133,6 +155,13 @@ class ReminderService:
                 self._items.remove(entry)
             return None
         return entry
+
+    def pending_summary(self) -> str:
+        """'1 alarm and 2 reminders', or '' when nothing is pending."""
+        with self._lock:
+            counts = [(len(self._pending("alarm")), "alarm"),
+                      (len(self._pending("reminder")), "reminder")]
+        return " and ".join(f"{n} {word}{'' if n == 1 else 's'}" for n, word in counts if n)
 
     def start(self) -> None:
         if self._thread is None:
@@ -151,17 +180,25 @@ class ReminderService:
 
     def fire_due(self, now: float | None = None) -> int:
         """Speak every pending item whose time has come (up to MAX_BATCH per call).
+        One-offs are marked done; repeating alarms move to their next occurrence.
         Returns how many were handled."""
         now = time.time() if now is None else now
         with self._lock:
             due = sorted((r for r in self._items
                           if r["status"] == "pending" and r["due"] <= now),
                          key=lambda r: r["due"])[:MAX_BATCH]
+            fired = [dict(r) for r in due]             # snapshot: messages use the old due times
             for r in due:
-                r["status"] = "done"                   # mark first: at most once, even if speaking fails
+                days = _repeat_of(r)
+                if _kind(r) == "alarm" and days:
+                    old = datetime.fromtimestamp(r["due"])
+                    r["due"] = next_on_days(old.hour, old.minute, days,
+                                            datetime.fromtimestamp(now)).timestamp()
+                else:
+                    r["status"] = "done"               # mark first: at most once, even if speaking fails
             if due:
                 self._save()
-        for message in self._fire_messages(due, now):  # speak outside the lock
+        for message in self._fire_messages(fired, now):  # speak outside the lock
             self._on_fire(message)
         return len(due)
 
@@ -277,20 +314,27 @@ class ReminderService:
                                 f"{to_second_person(matches[0]['task'])}.")
 
     def set_alarm(self, slots: dict[str, str]) -> ToolResult:
-        when = slots.get("when", "").strip()
+        # The repeat can arrive in `when` ("7 am every weekday"), in its own slot, or both.
+        days, when = split_repeat(f"{slots.get('repeat', '')} {slots.get('when', '')}")
         question = "What time should I set it for?"
-        ask = FollowUp("set_alarm", "when")
+        ask = FollowUp("set_alarm", "when", {"repeat": repeat_phrase(days)} if days else {})
         if not when:
             return ToolResult(False, "What time should I set the alarm for?", follow_up=ask)
+        if days and when.split()[0] == "in":
+            return ToolResult(False, "A repeating alarm needs a clock time, like 7 AM. What time?",
+                              follow_up=ask)
         now = datetime.now()
         due, error = self._check_time(when, now, ask, question)
         if error:
             return error
-        entry = self._store("alarm", due, "alarm")
+        if days:                                       # first occurrence on a chosen day
+            due = next_on_days(due.hour, due.minute, days, due - timedelta(seconds=1))
+        entry = self._store("alarm", due, "alarm", days)
         if entry is None:
             return ToolResult(False, "I couldn't save that alarm.")
-        return ToolResult(True, f"Okay, alarm set for {describe_time(due, now)}.",
-                          {"id": entry["id"]})
+        spoken = f"{clock_text(due)} {repeat_phrase(days)}" if days else describe_time(due, now)
+        return ToolResult(True, f"Okay, alarm set for {spoken}.",
+                          {"id": entry["id"], "repeat": list(days)})
 
     def list_alarms(self, slots: dict[str, str]) -> ToolResult:
         now = datetime.now()
@@ -299,8 +343,8 @@ class ReminderService:
         if not alarms:
             return ToolResult(True, "You have no alarms.")
         if len(alarms) == 1:
-            when = describe_time(datetime.fromtimestamp(alarms[0]["due"]), now)
-            return ToolResult(True, f"You have one alarm, for {when}.", {"count": 1})
+            return ToolResult(True, f"You have one alarm, for {describe_alarm(alarms[0], now)}.",
+                              {"count": 1})
         return ToolResult(True, f"You have {len(alarms)} alarms: {_alarm_times(alarms, now)}.",
                           {"count": len(alarms)})
 
@@ -313,12 +357,6 @@ class ReminderService:
             if not alarms:
                 return ToolResult(True, "You have no alarms.")
             overview = f"You have alarms for {_alarm_times(alarms, now)}. Which one?"
-            """ previous code:
-                if which in _ALL:
-                    matches = alarms
-                elif not which and len(alarms) == 1:
-                    matches = alarms
-            """
             if which in _ALL or (not which and len(alarms) == 1):
                 matches = alarms
             elif not which:
@@ -335,5 +373,5 @@ class ReminderService:
             self._save()
         if len(matches) > 1:
             return ToolResult(True, f"Okay, I cleared {len(matches)} alarms.")
-        when = describe_time(datetime.fromtimestamp(matches[0]["due"]), now)
-        return ToolResult(True, f"Okay, I cancelled the alarm for {when}.")
+        return ToolResult(True, f"Okay, I cancelled the alarm for "
+                                f"{describe_alarm(matches[0], now)}.")
